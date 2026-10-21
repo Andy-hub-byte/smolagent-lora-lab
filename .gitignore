@@ -1,0 +1,25 @@
+# 训练/模型产物(体积大, 不入库)
+models/
+outputs/
+lora_output/
+checkpoint-*/
+*.safetensors
+*.pt
+*.bin
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 运行时生成
+agent_memory.json
+
+# 系统垃圾
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
