@@ -1,0 +1,43 @@
+# ============================================================
+# smolagent-lora-lab 依赖清单
+# 安装: pip install -r requirements.txt
+#
+# ⚠️ 按你的硬件二选一, 不要全装:
+#   [NVIDIA 显卡]   直接 pip install -r requirements.txt(自动带 CUDA 量化支持)
+#   [CPU / ARM 平板] 见文件末尾【ARM / CPU 专属说明】, bitsandbytes 装不上是正常的
+# ============================================================
+
+# —— 深度学习框架(必需) ——
+torch>=2.4                    # 训练/推理核心; GPU 版请按 https://pytorch.org 官方命令装对应 CUDA 版本
+
+# —— 模型与分词器(必需) ——
+transformers>=4.56            # AutoModel/AutoTokenizer; 4.56+ 用 dtype= 参数名(旧版为 torch_dtype=)
+datasets>=3.0                 # trl 要求 train_dataset 为 Dataset 对象
+accelerate>=0.30              # device_map/大模型加载加速
+
+# —— LoRA 微调(必需) ——
+peft>=0.12                    # LoraConfig / PeftModel
+trl>=1.0                      # SFTTrainer + SFTConfig
+
+# —— 本地智能体(必需) ——
+smolagents>=1.20              # CodeAgent / TransformersModel / @tool
+
+# —— 模型下载(按源二选一, 也可都装) ——
+modelscope>=1.15              # 国内源(默认): 短名自动路由到魔搭
+huggingface_hub>=0.24         # 海外源: --model-source huggingface; Llama 门控模型需先 hf auth login
+
+# —— 可选(体验更好) ——
+psutil>=5.9                   # 内存检测(缺失时自动回退 /proc/meminfo)
+
+
+# ============================================================
+# 【NVIDIA 显卡用户】额外安装(启用 4bit QLoRA 量化训练):
+#   pip install bitsandbytes>=0.43
+# 安装后 --model qwen2.5-7b 这类 7B 模型才能在 24GB 以下显存训练。
+#
+# 【ARM / CPU 用户】重要说明:
+#   1) bitsandbytes 官方不支持 ARM64, pip install 会失败 —— 这是正常现象,
+#      跳过即可, 脚本会自动降级为 fp32 LoRA(脚本内有提示)。
+#   2) 请使用 ≤4B 小模型(如 qwen2.5-1.5b / qwen3-1.7b), 脚本会阻止 7B/14B 启动。
+#   3) CPU 训练速度很慢, 建议先用 --max-steps 20 做流程验证, 再挂机长跑。
+# ============================================================
