@@ -147,6 +147,60 @@ html, body {
   color: var(--accent);
 }
 
+/* ============ 顶栏语言按钮 ============ */
+.hud-lang {
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--text-2);
+  background: var(--bg-panel-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+  font-family: inherit;
+}
+.hud-lang:hover { border-color: var(--accent); color: var(--text-1); }
+
+/* ============ 训练页顶部提示条 ============ */
+.next-tip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: var(--text-2);
+  line-height: 1.7;
+  background: linear-gradient(135deg, var(--accent-soft), transparent 60%), var(--bg-panel);
+  border-color: rgba(79, 143, 247, 0.35);
+}
+.next-tip .btn { flex: none; }
+
+/* ============ 对话页 ============ */
+.chat-step { border-left: 3px solid var(--accent); }
+.chat-step legend { color: var(--text-1); }
+.hint.sm { font-size: 11.5px; margin: 6px 0 0; line-height: 1.7; }
+.hint.sm strong { color: var(--text-2); }
+
+details.advanced {
+  margin-top: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+details.advanced summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text-3);
+  user-select: none;
+}
+details.advanced summary:hover { color: var(--text-2); }
+details.advanced[open] summary { margin-bottom: 10px; color: var(--text-2); }
+
+/* 表格操作列 */
+.table td.ops { display: flex; gap: 6px; flex-wrap: wrap; }
+
 /* ============ 表单 ============ */
 fieldset {
   border: 1px solid var(--line);
@@ -222,7 +276,7 @@ select option { background: var(--bg-panel-2); }
 .btn.sm { padding: 5px 10px; font-size: 12px; }
 
 /* ============ 训练布局 ============ */
-.train-layout, .agent-layout {
+.train-layout, .chat-layout, .agent-layout {
   display: grid;
   grid-template-columns: minmax(340px, 480px) 1fr;
   gap: 16px;
@@ -400,7 +454,7 @@ select option { background: var(--bg-panel-2); }
 
 /* ============ 响应式：平板 / 窄屏 ============ */
 @media (max-width: 1024px) {
-  .train-layout, .agent-layout { grid-template-columns: 1fr; }
+  .train-layout, .chat-layout, .agent-layout { grid-template-columns: 1fr; }
   .form-card { position: static; max-height: none; }
   .grid-2 { grid-template-columns: 1fr; }
 }

@@ -4,7 +4,9 @@
 > Fine-tune your own local AI agent with LoRA on your own machine — no cloud, no API key.
 
 **三大件**：`train_lora.py`(训练器) + `agent.py`(本地智能体) + `datasets/`(训练数据)
+**外加**：`webui/`(网页图形界面, 推荐新手) + `import_model.py`(导入外部模型)
 **Two model sources**: ModelScope(魔搭, 国内默认) ↔ Hugging Face(海外) — 一行参数切换
+**Bilingual UI**: 界面与 README 均支持中英一键切换 / The WebUI and README are bilingual (中文/English).
 
 ---
 
@@ -59,7 +61,7 @@ python agent.py --mode A --model qwen2.5-7b --adapter ./lora_output --task "帮�
 ## 4. Web 图形界面 / WebUI(推荐新手)
 
 嫌记命令麻烦？项目自带一个**本地网页控制台**，浏览器里点按钮就能完成
-「体检 → 训练 → 看 loss 曲线 → 挂适配器测试」全流程：
+「体检 → 导入模型 → 训练 → 看 loss 曲线 → 对话测试」全流程：
 
 ```bash
 python webui/app.py                  # 启动并自动打开 http://127.0.0.1:7860
@@ -68,19 +70,43 @@ python webui/app.py --host 0.0.0.0   # 允许平板/手机同局域网访问(需
 
 **Windows 用户**：直接双击根目录的 `启动WebUI.bat`。
 
-五个页签：
+六个页签：
 
 | 页签 | 能干什么 |
 |---|---|
-| **环境体检** | 一键检查依赖版本 / CUDA / 内存，给出硬件建议 |
-| **训练控制台** | 表单选择全部训练参数(与命令行等价，实时预览命令)，开始/停止训练，**loss 实时曲线** |
-| **Agent 测试台** | 模式 A/B/C 切换，挂上适配器跑单任务，终端式实时日志 |
-| **数据集** | 浏览 `datasets/` 下的 jsonl，在线预览前几条 |
-| **产出管理** | 自动扫描各输出目录里的适配器 / checkpoint 快照 |
+| **🩺 环境体检** | 一键检查依赖版本 / CUDA / 内存，给出硬件建议；可一键生成微型测试模型 |
+| **📥 模型导入** | 三种方式把外部模型加进 `models/`：本机文件夹 / Hugging Face·魔搭仓库 / 网页上传(支持 zip) |
+| **🚀 训练** | 表单选择全部训练参数(与命令行等价，实时预览命令)，开始/停止训练，**loss 实时曲线** |
+| **💬 模型对话** | 两步选择器：① 选模型(本地/在线/Ollama/手动) ② 选适配器(不使用=原版模型直接对话) |
+| **📚 数据集** | 浏览 `datasets/` 下的 jsonl，在线预览前几条 |
+| **📦 产出管理** | 自动扫描各输出目录里的适配器 / checkpoint 快照，一键「用作适配器」 |
 
 > WebUI 只是 `train_lora.py` / `agent.py` 的**图形外壳**：表单参数与命令行完全等价
-> (界面左侧有实时命令预览，可照抄复用)；刷新页面会自动重连进行中的任务。
+> (界面左侧有实时命令预览，可照抄复用)。
+> **断线续跑**：关掉网页、关掉终端、甚至服务器崩溃，训练都会在后台继续；
+> 重新打开本程序会自动接上仍在运行的任务(启动横幅会提示)。
 > 纯命令行用户不装 flask 也能用全部功能。详见 `webui/README.md`。
+
+### 4.1 导入外部模型 / Import external models
+
+已经有下载好的模型(或在 Hugging Face / 魔搭上看到心仪的模型)？用 `import_model.py`
+或 WebUI 的「模型导入」页签加进来，之后训练和对话都能直接选：
+
+```bash
+# 方式一: 本机文件夹(拷贝到 models/)
+python import_model.py /path/to/Qwen2.5-1.5B-Instruct
+
+# 方式二: Hugging Face / 魔搭仓库(下载到 models/)
+python import_model.py Qwen/Qwen2.5-1.5B-Instruct --source huggingface
+python import_model.py qwen2.5-1.5b --source modelscope        # 内置短名也可以
+
+# 导入后就能直接训练 / 对话:
+python train_lora.py --model-source local --model ./models/Qwen2.5-1.5B-Instruct
+python agent.py --mode C --model-path ./models/Qwen2.5-1.5B-Instruct
+```
+
+导入时会自动校验 HuggingFace 格式(`config.json` + `.safetensors/.bin` 权重)，
+不完整的目录会在 WebUI 里标红提醒。门控模型(如 Llama)需先在 HF 官网同意协议并 `hf auth login`。
 
 ## 5. 三种使用模式 / Three modes
 
@@ -191,19 +217,20 @@ smolagent-lora-lab/
 ├── train_lora.py          # 训练器(CONFIG 集中配置 + 双模型源 + 断点续训)
 ├── agent.py               # 本地智能体(模式 A/B/C + 工具 + 记忆)
 ├── make_tiny_model.py     # 生成微型测试模型(CPU 冒烟测试用, 无需下载)
+├── import_model.py        # 导入外部模型(本地路径 / HF·魔搭仓库 / 已由 WebUI 上传接管)
 ├── requirements.txt       # 依赖清单(含 CUDA / ARM 双说明)
 ├── 启动WebUI.bat          # Windows 双击启动 Web 界面
 ├── webui/                 # Web 图形界面(Flask 后端 + 原生前端, 零构建)
-│   ├── app.py             #   后端: 训练/Agent 进程管理 + SSE 实时日志 + loss 曲线 API
+│   ├── app.py             #   后端: 作业进程管理(独立进程组/断线续跑) + SSE 实时日志 + loss 曲线 API
 │   ├── README.md          #   WebUI 详细使用说明
-│   └── static/            #   前端(index.html / style.css / app.js)
+│   └── static/            #   前端(index.html / app.js / i18n.js 中英双语 / style.css)
 ├── datasets/              # 训练数据(118 条, 4 个文件)
 │   ├── dataset_daily.jsonl
 │   ├── dataset_study.jsonl
 │   ├── dataset_agent_tool.jsonl
 │   └── dataset_custom_sample.jsonl
 ├── lora_output/           # 训练产出的适配器(首次训练后生成)
-├── models/                # 模型下载缓存(首次运行后生成)
+├── models/                # 模型缓存 + 导入的外部模型(首次运行后生成)
 └── agent_memory.json      # Agent 记忆(首次交互后生成)
 ```
 
@@ -228,6 +255,20 @@ A: 先确认 `pip install flask`；换端口启动 `python webui/app.py --port 8
 平板/手机访问需加 `--host 0.0.0.0` 且与电脑在同一局域网，浏览器输入 `http://<电脑IP>:7860`。
 WebUI 全部功能都有对应的命令行等价形式，临时用命令行顶班不影响进度。
 
+**Q: WebUI 的「停止」按钮点了没反应 / 之后整个页面卡住？**
+A: 早期版本有停止键误杀服务器进程的 bug，已修复：训练进程现在跑在**独立进程组**里，
+停止只结束训练本身，服务器不受影响(停止约 5 秒仍不退会强制结束)。
+
+**Q: 想关掉屏幕/终端让训练挂机跑，会断吗？**
+A: 不会。WebUI 启动的训练/对话任务在**独立进程组**中运行，与服务器进程组、
+控制台全部脱钩；关网页、关终端、甚至服务器崩溃都不影响任务继续。
+重新运行 `python webui/app.py` 会自动接上仍在运行的任务(启动横幅提示「★ 已接上…」)，
+日志与 loss 曲线自动重建。命令行用户则可直接用系统的 nohup / screen / tmux。
+
+**Q: 怎么把外部模型(已下载的 / HF 上的)加进来？**
+A: 三种方式任选：① WebUI「模型导入」页签；② `python import_model.py <路径或仓库ID>`；
+③ 网页上传(平板/手机友好，支持多文件或 zip)。导入后训练和对话都能直接选它。
+
 ## 12. 测试流程清单 / Testing checklist
 
 ```bash
@@ -241,10 +282,12 @@ python train_lora.py --model-source local --model <小模型路径> --dataset-mo
 #    详见 dev_note.md【冒烟测试记录】
 
 # 3b) WebUI 端到端(等价于上面全部步骤的图形版):
-python make_tiny_model.py --skip-download    # 有 tokenizer 缓存时离线生成微型模型
 python webui/app.py                           # 打开 http://127.0.0.1:7860
-#    环境体检 → 训练控制台(源 local, 模型 ./models/tiny-qwen-test, max-steps 3)
-#    → 看 loss 曲线 → Agent 测试台(模式 C, 挂刚产出的适配器)
+#    环境体检 → 模型导入(可用方式一导入 models/tiny-qwen-test 自身验证导入链路)
+#    → 训练(源 local, 模型 models/tiny-qwen-test, max-steps 4)
+#    → 看 loss 曲线 → 模型对话(选 tiny-qwen-test + 适配器选「不使用」验证无适配器对话)
+#    → 再选刚产出的适配器对话; 中途点「停止」验证服务器不受影响
+#    断线续跑: 训练中强杀服务器进程 → 确认训练还在跑 → 重启 app.py → 横幅提示已接上
 
 # 4) 真实训练(按显存选模型), 观察 loss 下降
 python train_lora.py --model qwen2.5-7b

@@ -1,13 +1,20 @@
 /* ============================================================
  * smolagent-lora-lab Web 微调工作台 · 前端逻辑
  * 原生 JS，无依赖。与后端 app.py 的 REST/SSE 接口对接。
+ * 中英双语: t()/tErr() 见 i18n.js; 语言切换时 onLangChange 重渲染动态内容。
  * ============================================================ */
 "use strict";
 
 /* ---------------- 工具 ---------------- */
 const $ = (id) => document.getElementById(id);
 
-function toast(msg, ms = 3200) {
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+
+function toast(msg, ms = 3600) {
   const el = $("toast");
   el.textContent = msg;
   el.hidden = false;
@@ -18,7 +25,7 @@ function toast(msg, ms = 3200) {
 async function api(path, opts) {
   const r = await fetch(path, opts);
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  if (!r.ok) throw new Error(tErr(data) || `HTTP ${r.status}`);
   return data;
 }
 
@@ -28,25 +35,44 @@ function fmtDur(sec) {
   return `${(sec / 60) | 0}m${(sec % 60) | 0}s`;
 }
 
+/** 记录 select 当前值，重建选项后若仍存在则恢复（语言切换不丢选择） */
+function withPreservedValue(sel, rebuild) {
+  const prev = sel.value;
+  rebuild();
+  if (prev && [...sel.options].some((o) => o.value === prev)) sel.value = prev;
+}
+
 /* ---------------- 页签 ---------------- */
+function switchTab(tab) {
+  document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  document.querySelectorAll(".page").forEach((p) =>
+    p.classList.toggle("active", p.id === `page-${tab}`));
+  if (tab === "out") loadOutputs();
+  if (tab === "data") loadDatasets();
+  if (tab === "import") loadImportedModels();
+  if (tab === "chat") buildChatSelects();
+}
+
 document.querySelectorAll(".tab").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b === btn));
-    document.querySelectorAll(".page").forEach((p) =>
-      p.classList.toggle("active", p.id === `page-${btn.dataset.tab}`));
-    if (btn.dataset.tab === "out") loadOutputs();
-    if (btn.dataset.tab === "data") loadDatasets();
-  });
+  btn.addEventListener("click", () => switchTab(btn.dataset.tab));
 });
 
-/* ---------------- 通用作业面板（训练 / Agent / Tiny 共用模式） ----------------
+/* ============================================================
+ * 通用作业面板（训练 / Agent 对话 / Tiny / 导入 共用模式）
  * 每个作业 = 一个 SSE 日志流 + 一个状态轮询 + 开始/停止按钮
- */
+ * ============================================================ */
+const JOB_STATE_KEYS = {
+  idle: "job.idle", running: "job.running", done: "job.done",
+  error: "job.error", stopped: "job.stopped",
+};
+
 class JobView {
-  constructor({ logEl, stateEl, metaEl, startBtn, stopBtn, progressWrap, progressBar }) {
-    Object.assign(this, { logEl, stateEl, metaEl, startBtn, stopBtn, progressWrap, progressBar });
+  constructor({ logEl, stateEl, metaEl, startBtn, stopBtn, progressWrap, progressBar, jobCard }) {
+    Object.assign(this, { logEl, stateEl, metaEl, startBtn, stopBtn, progressWrap, progressBar, jobCard });
     this.es = null;
     this.poll = null;
+    // 停止按钮文案键（语言切换时随 setState 刷新）
+    this._stopKey = stopBtn ? stopBtn.dataset.stopLabel : null;
     if (startBtn) startBtn.addEventListener("click", () => this.onStart && this.onStart());
     if (stopBtn) stopBtn.addEventListener("click", () => this.onStop && this.onStop());
   }
@@ -71,7 +97,7 @@ class JobView {
     const el = this.logEl;
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
     el.textContent += (el.textContent ? "\n" : "") + line;
-    // 终端上限 6000 行，防止超长训练爆内存
+    // 终端上限，防止超长训练爆内存
     if (el.textContent.length > 600000) el.textContent = el.textContent.slice(-400000);
     if (atBottom) el.scrollTop = el.scrollHeight;
   }
@@ -79,14 +105,27 @@ class JobView {
   clearLog() { this.logEl.textContent = ""; }
 
   setState(state) {
-    this.stateEl.textContent = {
-      idle: "空闲", running: "运行中", done: "已完成", error: "出错", stopped: "已停止"
-    }[state] || state;
+    this.state = state;
+    this.stateEl.textContent = t(JOB_STATE_KEYS[state] || state);
     this.stateEl.className = `job-state ${state}`;
     const running = state === "running";
     if (this.startBtn) this.startBtn.hidden = running;
-    if (this.stopBtn) this.stopBtn.hidden = !running;
+    if (this.stopBtn) {
+      this.stopBtn.hidden = !running;
+      this.stopBtn.disabled = false;
+      // 刷新停止按钮文案（语言切换后也正确）
+      if (this._stopKey) this.stopBtn.textContent = t(this._stopKey);
+    }
+    if (this.jobCard && state !== "idle") this.jobCard.hidden = false;
     if (!running && this.progressWrap) this.progressWrap.hidden = true;
+  }
+
+  /** 点击停止后的即时反馈：按钮变"停止中…"并禁用，直到状态回来 */
+  setStopping() {
+    if (!this.stopBtn || this.stopBtn.hidden) return;
+    this.stopBtn.textContent = t("job.stopping");
+    this.stopBtn.disabled = true;
+    setTimeout(() => { if (this.stopBtn) this.stopBtn.disabled = false; }, 8000);
   }
 
   setMeta(text) { if (this.metaEl) this.metaEl.textContent = text; }
@@ -97,11 +136,12 @@ class JobView {
     const tick = async () => {
       try {
         const s = await api(url);
-        this.setState(s.state);
+        if (this.state !== s.state) this.setState(s.state);
         const meta = [
-          s.pid ? `PID ${s.pid}` : "",
+          s.pid ? t("job.metaPid", { pid: s.pid }) : "",
           s.elapsed != null ? fmtDur(s.elapsed) : "",
-          s.total_steps ? `共 ${s.total_steps} 步` : "",
+          s.total_steps ? t("job.metaSteps", { n: s.total_steps }) : "",
+          s.adopted ? (getLang() === "zh" ? "已接上" : "adopted") : "",
         ].filter(Boolean).join(" · ");
         this.setMeta(meta);
         onChange(s);
@@ -130,21 +170,18 @@ async function loadEnv() {
     chip.title = env.platform;
 
     const rows = [
-      ["Python", env.python],
-      ["系统", env.platform],
-      ["设备", env.device === "cuda" ? `CUDA GPU（${env.gpu_name}，${env.vram_gb} GB）` : "CPU（无 CUDA GPU）"],
-      ["项目目录", env.project_root],
+      [t("env.py"), env.python],
+      [t("env.os"), env.platform],
+      [t("env.device"), env.device === "cuda"
+        ? t("env.gpu", { name: env.gpu_name, vram: env.vram_gb })
+        : t("env.cpu")],
+      [t("env.project"), env.project_root],
     ];
     $("env-table").querySelector("tbody").innerHTML =
-      rows.map(([k, v]) => `<tr><td>${k}</td><td>${v || "—"}</td></tr>`).join("");
+      rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v) || "—"}</td></tr>`).join("");
 
-    const depNames = {
-      torch: "PyTorch", transformers: "Transformers", peft: "PEFT", trl: "TRL",
-      datasets: "Datasets", smolagents: "smolagents", modelscope: "ModelScope",
-      accelerate: "Accelerate", flask: "Flask（本工作台）",
-    };
     $("deps-table").querySelector("tbody").innerHTML = Object.entries(env.deps)
-      .map(([k, v]) => `<tr><td>${depNames[k] || k}</td><td class="${v ? "ok" : "miss"}">${v || "未安装"}</td></tr>`)
+      .map(([k, v]) => `<tr><td>${esc(t(`dep.${k}`) || k)}</td><td class="${v ? "ok" : "miss"}">${esc(v) || t("dep.missing")}</td></tr>`)
       .join("");
 
     const adv = $("env-advice");
@@ -157,89 +194,202 @@ async function loadEnv() {
     }
   } catch (e) {
     chip.className = "chip chip-err";
-    chipText.textContent = "环境检测失败";
+    chipText.textContent = t("env.detectFail");
   }
 }
 
 /* ============================================================
- * 模型注册表 / 数据集 / 产出
+ * 模型注册表 / 已导入模型 / 数据集 / 产出
  * ============================================================ */
 let REGISTRY = {};
+let IMPORTED = [];   // /api/models/imported 的 entries
+let OUTPUTS = [];    // /api/outputs 的扁平适配器列表
 
 async function loadModels() {
   const data = await api("/api/models");
   REGISTRY = data;
+  // —— 训练页: 基座下拉（在线短名 + 本地模型 两个分组）——
   const sel = $("f-model-preset");
-  sel.innerHTML = "";
-  for (const short of Object.keys(data.registry || {})) {
-    const opt = document.createElement("option");
-    opt.value = short;
-    opt.textContent = short;
-    sel.appendChild(opt);
+  withPreservedValue(sel, () => {
+    sel.innerHTML = "";
+    const gOnline = document.createElement("optgroup");
+    gOnline.label = t("train.onlineGroup");
+    for (const short of Object.keys(data.registry || {})) {
+      const opt = document.createElement("option");
+      opt.value = short;
+      opt.textContent = short;
+      gOnline.appendChild(opt);
+    }
+    sel.appendChild(gOnline);
+    const gLocal = document.createElement("optgroup");
+    gLocal.label = t("train.localGroup");
+    const locals = IMPORTED.filter((e) => e.valid);
+    if (!locals.length) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = t("chat.noLocal");
+      opt.disabled = true;
+      gLocal.appendChild(opt);
+    }
+    for (const e of locals) {
+      const opt = document.createElement("option");
+      opt.value = e.path;
+      opt.textContent = e.name;
+      opt.dataset.local = "1";
+      gLocal.appendChild(opt);
+    }
+    sel.appendChild(gLocal);
+  });
+
+  // 用脚本默认值预填表单（与命令行默认一致；仅首次）
+  if (!loadModels._filled) {
+    loadModels._filled = true;
+    const d = data.defaults || {};
+    if (d.model) sel.value = d.model;
+    if (d.model_cache_dir) $("f-cache").value = d.model_cache_dir;
+    if (d.lora_rank) $("f-rank").value = d.lora_rank;
+    if (d.lora_alpha) $("f-alpha").value = d.lora_alpha;
+    if (d.lora_dropout != null) $("f-dropout").value = d.lora_dropout;
+    if (d.batch_size) $("f-bs").value = d.batch_size;
+    if (d.grad_accum) $("f-ga").value = d.grad_accum;
+    if (d.learning_rate) $("f-lr").value = d.learning_rate;
+    if (d.num_epochs) $("f-ep").value = d.num_epochs;
+    if (d.max_steps != null) $("f-steps").value = d.max_steps;
+    if (d.max_seq_len) $("f-seq").value = d.max_seq_len;
+    if (d.output_dir) $("f-out").value = d.output_dir;
+    if (d.save_steps) $("f-save").value = d.save_steps;
+    if (d.save_total_limit) $("f-limit").value = d.save_total_limit;
+    // 本地来源时同步来源下拉
+    syncSourceWithPreset();
   }
-  // Agent 测试台的基座短名补全
-  const ml = $("model-list");
-  ml.innerHTML = "";
-  for (const short of Object.keys(data.registry || {})) {
-    const opt = document.createElement("option");
-    opt.value = short;
-    ml.appendChild(opt);
-  }
-  // 用脚本默认值预填表单（与命令行默认一致）
-  const d = data.defaults || {};
-  if (d.model) { $("f-model").value = ""; sel.value = d.model; }
-  if (d.model_cache_dir) $("f-cache").value = d.model_cache_dir;
-  if (d.lora_rank) $("f-rank").value = d.lora_rank;
-  if (d.lora_alpha) $("f-alpha").value = d.lora_alpha;
-  if (d.lora_dropout != null) $("f-dropout").value = d.lora_dropout;
-  if (d.batch_size) $("f-bs").value = d.batch_size;
-  if (d.grad_accum) $("f-ga").value = d.grad_accum;
-  if (d.learning_rate) $("f-lr").value = d.learning_rate;
-  if (d.num_epochs) $("f-ep").value = d.num_epochs;
-  if (d.max_steps != null) $("f-steps").value = d.max_steps;
-  if (d.max_seq_len) $("f-seq").value = d.max_seq_len;
-  if (d.output_dir) $("f-out").value = d.output_dir;
-  if (d.save_steps) $("f-save").value = d.save_steps;
-  if (d.save_total_limit) $("f-limit").value = d.save_total_limit;
   updateCmdPreview();
 }
 
+/** 训练页: 下拉选了本地模型 → 来源自动切 local；选在线短名 → 离开 local */
+function syncSourceWithPreset() {
+  const sel = $("f-model-preset");
+  const opt = sel.selectedOptions[0];
+  const isLocal = opt && opt.dataset.local === "1";
+  const src = $("f-source");
+  if (isLocal) src.value = "local";
+  else if (src.value === "local") src.value = "modelscope";
+}
+
+/* ---- 已导入模型（模型导入页） ---- */
+async function loadImportedModels() {
+  const tbody = $("imp-table").querySelector("tbody");
+  try {
+    const data = await api("/api/models/imported");
+    IMPORTED = data.entries || [];
+    if (!IMPORTED.length) {
+      tbody.innerHTML = `<tr><td colspan="7" class="hint">${esc(t("imp.empty"))}</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = IMPORTED.map((e) => `
+      <tr>
+        <td><code>${esc(e.name)}</code></td>
+        <td>${esc(e.arch) || "—"}</td>
+        <td>${e.weight_count} ${esc(getLang() === "zh" ? "个" : "files")}${e.has_tokenizer ? "" : " " + esc(t("imp.noTok"))}</td>
+        <td class="${e.valid ? "ok" : "miss"}">${e.valid ? esc(t("imp.valid")) : esc(t("imp.invalid"))}</td>
+        <td class="num">${e.size_mb}</td>
+        <td class="num">${esc(e.mtime)}</td>
+        <td class="ops"></td>
+      </tr>`).join("");
+    // 操作列按钮（事件绑定，避免内联 onclick）
+    [...tbody.querySelectorAll("tr")].forEach((tr, i) => {
+      const e = IMPORTED[i];
+      const td = tr.querySelector("td.ops");
+      if (e.valid) {
+        const b1 = document.createElement("button");
+        b1.className = "btn sm";
+        b1.textContent = t("imp.useBase");
+        b1.addEventListener("click", () => useAsBase(e));
+        td.appendChild(b1);
+      }
+      const b2 = document.createElement("button");
+      b2.className = "btn danger sm";
+      b2.textContent = getLang() === "zh" ? "删除" : "Delete";
+      b2.addEventListener("click", () => deleteImported(e));
+      td.appendChild(b2);
+    });
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="7" class="hint">${esc(t("imp.loadFail"))}${esc(e.message)}</td></tr>`;
+  }
+}
+
+function useAsBase(e) {
+  $("f-source").value = "local";
+  $("f-model-preset").value = e.path;
+  $("f-model").value = "";
+  syncSourceWithPreset();
+  updateCmdPreview();
+  switchTab("train");
+  toast(t("imp.baseFilled", { name: e.name }));
+}
+
+async function deleteImported(e) {
+  if (!confirm(t("imp.confirmDelete", { name: e.name }))) return;
+  try {
+    await api("/api/models/imported/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: e.delete_name || e.name }),
+    });
+    toast(t("imp.deleted", { name: e.name }));
+    loadImportedModels();
+    buildChatSelects();
+    loadModels();  // 训练页本地分组可能空了
+  } catch (err) { toast(err.message); }
+}
+
+/* ---- 数据集 ---- */
 async function loadDatasets() {
   try {
     const data = await api("/api/datasets");
     $("ds-dir").textContent = data.dir;
     const sel = $("f-ds-file");
-    sel.innerHTML = "";
+    withPreservedValue(sel, () => {
+      sel.innerHTML = "";
+      for (const f of data.files) {
+        const opt = document.createElement("option");
+        opt.value = f.path;
+        opt.textContent = `${f.name}（${f.count} ${t("data.rowsSuffix").trim()}）`;
+        sel.appendChild(opt);
+      }
+    });
     const tbody = $("ds-table").querySelector("tbody");
     tbody.innerHTML = "";
     for (const f of data.files) {
-      const opt = document.createElement("option");
-      opt.value = f.path;
-      opt.textContent = `${f.name}（${f.count} 条）`;
-      sel.appendChild(opt);
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td class="num">${f.name}</td><td class="num">${f.count}</td><td class="num">${f.size_kb} KB</td>`;
-      const td = document.createElement("td");
+      const td1 = document.createElement("td");
+      td1.textContent = f.name;
+      const td2 = document.createElement("td");
+      td2.className = "num";
+      td2.textContent = f.count;
+      const td3 = document.createElement("td");
+      td3.className = "num";
+      td3.textContent = `${f.size_kb} KB`;
+      const td4 = document.createElement("td");
       const btn = document.createElement("button");
       btn.className = "btn sm";
-      btn.textContent = "预览";
+      btn.textContent = t("data.preview");
       btn.addEventListener("click", () => previewDataset(f));
-      td.appendChild(btn);
-      tr.appendChild(td);
+      td4.appendChild(btn);
+      tr.append(td1, td2, td3, td4);
       tbody.appendChild(tr);
     }
     if (!data.files.length) {
-      tbody.innerHTML = `<tr><td colspan="4">datasets 目录下没有 jsonl 文件</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="4" class="hint">${esc(t("data.empty"))}</td></tr>`;
     }
   } catch (e) { /* 静默 */ }
 }
 
 async function previewDataset(f) {
   const card = $("ds-preview-card");
-  $("ds-preview-name").textContent = `${f.name}（${f.count} 条）`;
+  $("ds-preview-name").textContent = `${f.name}（${f.count} ${t("data.rowsSuffix").trim()}）`;
   card.hidden = false;
   const box = $("ds-preview");
-  box.innerHTML = "<p class='hint'>加载中…</p>";
+  box.innerHTML = `<p class="hint">${esc(t("data.loading"))}</p>`;
   try {
     const data = await api(`/api/datasets/preview?path=${encodeURIComponent(f.path)}&limit=5`);
     box.innerHTML = "";
@@ -254,51 +404,164 @@ async function previewDataset(f) {
       div.append(head, pre);
       box.appendChild(div);
     });
-    if (!data.rows || !data.rows.length) box.innerHTML = "<p class='hint'>空文件</p>";
+    if (!data.rows || !data.rows.length) box.innerHTML = `<p class="hint">${esc(t("data.emptyFile"))}</p>`;
   } catch (e) {
-    box.innerHTML = `<p class="hint">预览失败：${e.message}</p>`;
+    box.innerHTML = `<p class="hint">${esc(t("data.previewFail"))}${esc(e.message)}</p>`;
   }
 }
 
+/* ---- 产出（适配器列表 + 对话页适配器下拉共用） ---- */
 async function loadOutputs() {
-  const box = $("out-list");
   try {
     const data = await api("/api/outputs");
-    // 适配器自动补全列表
-    const dl = $("adapter-list");
-    dl.innerHTML = "";
-    let any = false;
+    OUTPUTS = [];
     for (const dir of data.dirs) {
       for (const e of dir.entries) {
-        any = true;
-        const opt = document.createElement("option");
-        opt.value = e.path;
-        dl.appendChild(opt);
-        const item = document.createElement("div");
-        item.className = "out-item";
-        item.innerHTML = `
-          <div class="meta">
-            <span class="name">${dir.dir}/${e.name}</span>
-            <span class="sub">${e.size_mb} MB · ${e.mtime}</span>
-          </div>`;
-        const btn = document.createElement("button");
-        btn.className = "btn sm";
-        btn.textContent = "用作适配器";
-        btn.addEventListener("click", () => {
-          const mode = document.querySelector('input[name="a-mode"]:checked').value;
-          $(mode === "A" ? "a-adapter2" : "a-adapter").value = e.path;
-          document.querySelector('.tab[data-tab="agent"]').click();
-          toast(`已填入适配器路径：${e.path}`);
-        });
-        item.appendChild(btn);
-        box.appendChild(item);
+        OUTPUTS.push({ ...e, path: e.path, dir: dir.dir });
       }
     }
-    if (!any) box.innerHTML = "<p class='hint'>暂无产出。训练完成后，适配器会出现在 lora_output/ 目录。</p>";
-  } catch (e) {
-    box.innerHTML = `<p class="hint">加载失败：${e.message}</p>`;
+  } catch { OUTPUTS = []; }
+  renderOutputsList();
+  fillAdapterSelect();
+}
+
+function renderOutputsList() {
+  const box = $("out-list");
+  box.innerHTML = "";
+  if (!OUTPUTS.length) {
+    box.innerHTML = `<p class="hint">${esc(t("out.empty"))}</p>`;
+    return;
+  }
+  for (const e of OUTPUTS) {
+    const item = document.createElement("div");
+    item.className = "out-item";
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.innerHTML = `
+      <span class="name">${esc(e.dir)}/${esc(e.name)}</span>
+      <span class="sub">${e.size_mb} MB · ${esc(e.mtime)}</span>`;
+    const btn = document.createElement("button");
+    btn.className = "btn sm";
+    btn.textContent = t("out.useAdapter");
+    btn.addEventListener("click", () => {
+      const sel = $("chat-adapter");
+      sel.value = e.path;
+      if (sel.value !== e.path) {   // 选项不在（刚训练完）→ 重建后再选
+        fillAdapterSelect(e.path);
+      }
+      switchTab("chat");
+      toast(t("out.filled", { path: e.path }));
+    });
+    item.append(meta, btn);
+    box.appendChild(item);
   }
 }
+
+/* ============================================================
+ * 模型导入（三种方式）
+ * ============================================================ */
+const importView = new JobView({
+  logEl: $("imp-log"), stateEl: $("imp-state"), metaEl: $("imp-meta"),
+  stopBtn: $("btn-imp-stop"), jobCard: $("imp-job-card"),
+});
+
+$("btn-imp-path").addEventListener("click", async () => {
+  const path = $("imp-path").value.trim();
+  if (!path) { toast(t("imp.needPath")); return; }
+  try {
+    const r = await api("/api/models/import/path", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path,
+        name: $("imp-path-name").value.trim() || undefined,
+        overwrite: $("imp-path-overwrite").checked ? true : undefined,
+      }),
+    });
+    toast(r.message || t("imp.imported", { name: r.entry.name, size: r.entry.size_mb }));
+    $("imp-path").value = "";
+    $("imp-path-name").value = "";
+    loadImportedModels();
+    buildChatSelects();
+    loadModels();
+  } catch (e) { toast(e.message); }
+});
+
+$("btn-imp-repo").addEventListener("click", async () => {
+  const repo = $("imp-repo").value.trim();
+  if (!repo) { toast(t("imp.needRepo")); return; }
+  try {
+    const r = await api("/api/models/import/repo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source: $("imp-source").value,
+        repo,
+        name: $("imp-repo-name").value.trim() || undefined,
+        overwrite: $("imp-repo-overwrite").checked ? true : undefined,
+      }),
+    });
+    importView.clearLog();
+    importView.appendLog(`$ ${r.cmd}`);
+    importView.setState("running");
+    importView.connectSSE("/api/models/import/logs");
+    importView.watchStatus("/api/models/import/status", 2000, onImportStatus);
+    toast(t("imp.repoStarted"));
+  } catch (e) { toast(e.message); }
+});
+
+function onImportStatus(s) {
+  if (s.state === "running") return;
+  importView.stopWatch();
+  if (s.state === "done") {
+    toast(t("imp.repoDone", { name: lastRepoName() }));
+    loadImportedModels();
+    buildChatSelects();
+    loadModels();
+  } else if (s.state === "error") {
+    toast(t("imp.repoErr"));
+  }
+}
+
+function lastRepoName() {
+  return $("imp-repo-name").value.trim() || $("imp-repo").value.trim().split("/").pop() || "?";
+}
+
+$("btn-imp-upload").addEventListener("click", async () => {
+  const name = $("imp-upload-name").value.trim();
+  if (!name) { toast(t("imp.needName")); return; }
+  const files = $("imp-files").files;
+  if (!files.length) { toast(t("imp.needFiles")); return; }
+  const btn = $("btn-imp-upload");
+  btn.disabled = true;
+  btn.textContent = t("imp.uploading");
+  try {
+    const fd = new FormData();
+    fd.append("name", name);
+    if ($("imp-upload-overwrite").checked) fd.append("overwrite", "1");
+    for (const f of files) fd.append("files", f);
+    const r = await fetch("/api/models/import/upload", { method: "POST", body: fd });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(tErr(data) || `HTTP ${r.status}`);
+    toast(data.message || t("imp.imported", { name, size: data.entry ? data.entry.size_mb : "?" }));
+    $("imp-upload-name").value = "";
+    $("imp-files").value = "";
+    loadImportedModels();
+    buildChatSelects();
+    loadModels();
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = t("imp.btnUpload");
+  }
+});
+
+importView.onStop = async () => {
+  importView.setStopping();
+  try { await api("/api/models/import/stop", { method: "POST" }); }
+  catch (e) { toast(e.message); }
+};
 
 /* ============================================================
  * 训练控制台
@@ -323,7 +586,7 @@ function buildTrainPayload() {
     lora_dropout: +$("f-dropout").value,
     batch_size: +$("f-bs").value,
     grad_accum: +$("f-ga").value,
-    learning_rate: +$("f-lr").value,
+    learning_rate: $("f-lr").value,
     num_epochs: +$("f-ep").value,
     max_steps: +$("f-steps").value,
     max_seq_len: +$("f-seq").value,
@@ -349,7 +612,7 @@ function updateCmdPreview() {
   cmd += ` --output-dir ${p.output_dir}`;
   if (p.resume) cmd += " --resume";
   if (p.force) cmd += " --force";
-  $("train-cmd-preview").innerHTML = `等价命令行：<code>${cmd}</code>`;
+  $("train-cmd-preview").innerHTML = `${esc(t("train.cmdPreview"))} <code>${esc(cmd)}</code>`;
 }
 
 trainView.onStart = async () => {
@@ -371,9 +634,10 @@ trainView.onStart = async () => {
 };
 
 trainView.onStop = async () => {
+  trainView.setStopping();
   try {
     await api("/api/train/stop", { method: "POST" });
-    toast("已发送停止信号，训练进程正在退出…");
+    toast(getLang() === "zh" ? "已发送停止信号，训练进程正在退出…" : "Stop signal sent — training process is exiting…");
   } catch (e) { toast(e.message); }
 };
 
@@ -388,7 +652,7 @@ function onTrainStatus(s) {
     trainView.stopWatch();
     stopLossPolling();
     loadOutputs(); // 训练结束刷新产出列表
-    if (s.state === "error") toast("训练进程出错，请查看日志末尾定位问题");
+    if (s.state === "error") toast(t("train.errToast"));
   }
 }
 
@@ -415,7 +679,7 @@ function drawLoss(points, totalSteps) {
   const box = $("loss-chart");
   if (!points.length) {
     box.className = "chart-empty";
-    box.textContent = "开始训练后显示 loss 变化";
+    box.textContent = t("chart.empty");
     return;
   }
   box.className = "";
@@ -435,7 +699,7 @@ function drawLoss(points, totalSteps) {
   const min = Math.min(...ys);
 
   box.innerHTML = `
-  <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="loss 曲线">
+  <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="loss">
     <defs>
       <linearGradient id="lg" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stop-color="rgba(79,143,247,0.35)"/>
@@ -450,57 +714,193 @@ function drawLoss(points, totalSteps) {
     <text x="${pad.l - 6}" y="${Y(y1) + 4}" fill="#5d6f92" font-size="10" text-anchor="end">${y1.toFixed(2)}</text>
     <text x="${pad.l - 6}" y="${Y(y0) + 4}" fill="#5d6f92" font-size="10" text-anchor="end">${y0.toFixed(2)}</text>
     <text x="${W - pad.r}" y="${H - 6}" fill="#5d6f92" font-size="10" text-anchor="end">step ${last.step}${totalSteps ? `/${totalSteps}` : ""}</text>
-    <text x="${pad.l}" y="${H - 6}" fill="#5d6f92" font-size="10">当前 ${last.loss.toFixed(4)} · 最低 ${min.toFixed(4)}</text>
+    <text x="${pad.l}" y="${H - 6}" fill="#5d6f92" font-size="10">${esc(t("chart.current"))} ${last.loss.toFixed(4)} · ${esc(t("chart.min"))} ${min.toFixed(4)}</text>
   </svg>`;
 }
 
 // 表单变化即时刷新等价命令预览
-$("train-form").addEventListener("input", updateCmdPreview);
-$("btn-train-reset").addEventListener("click", () => { loadModels(); toast("已重置为脚本默认推荐值"); });
+$("train-form").addEventListener("input", () => { syncSourceWithPreset(); updateCmdPreview(); });
+$("f-model-preset").addEventListener("change", () => { syncSourceWithPreset(); updateCmdPreview(); });
+$("btn-train-reset").addEventListener("click", () => {
+  loadModels._filled = false;
+  loadModels().then(() => toast(getLang() === "zh" ? "已重置为脚本默认推荐值" : "Reset to script defaults"));
+});
+$("btn-goto-chat").addEventListener("click", () => {
+  switchTab("chat");
+  // 预选最新产出作为适配器，省一步操作
+  if (OUTPUTS.length) fillAdapterSelect(OUTPUTS[0].path);
+});
 
 /* ============================================================
- * Agent 测试台
+ * 模型对话（两步选择器：选模型 → 选适配器）
  * ============================================================ */
 const agentView = new JobView({
   logEl: $("agent-log"), stateEl: $("agent-state"), metaEl: $("agent-meta"),
   startBtn: $("btn-agent-run"), stopBtn: $("btn-agent-stop"),
 });
 
-function currentAgentMode() {
-  return document.querySelector('input[name="a-mode"]:checked').value;
+const CHAT_MANUAL = "__manual__";
+
+/** 重建对话页两个下拉（语言切换 / 数据变化时调用） */
+function buildChatSelects(preferAdapterPath) {
+  // —— 第一步: 模型 ——
+  const mSel = $("chat-model");
+  withPreservedValue(mSel, () => {
+    mSel.innerHTML = "";
+    // 本地模型组
+    const gLocal = document.createElement("optgroup");
+    gLocal.label = t("chat.localGroup");
+    const locals = IMPORTED.filter((e) => e.valid);
+    if (!locals.length) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = t("chat.noLocal");
+      opt.disabled = true;
+      gLocal.appendChild(opt);
+    }
+    for (const e of locals) {
+      const opt = document.createElement("option");
+      opt.value = e.path;
+      opt.textContent = e.name;
+      opt.dataset.kind = "local";
+      opt.dataset.path = e.path;
+      gLocal.appendChild(opt);
+    }
+    mSel.appendChild(gLocal);
+    // 在线模型组
+    const gOnline = document.createElement("optgroup");
+    gOnline.label = t("chat.onlineGroup");
+    for (const [short, srcs] of Object.entries(REGISTRY.registry || {})) {
+      const src = srcs.modelscope ? "modelscope" : "huggingface";
+      const opt = document.createElement("option");
+      opt.value = short;
+      opt.textContent = short;
+      opt.dataset.kind = "online";
+      opt.dataset.source = src;
+      gOnline.appendChild(opt);
+    }
+    mSel.appendChild(gOnline);
+    // Ollama / 手动
+    const oOllama = document.createElement("option");
+    oOllama.value = "__ollama__";
+    oOllama.textContent = "🦙 " + t("chat.ollamaOpt");
+    oOllama.dataset.kind = "ollama";
+    mSel.appendChild(oOllama);
+    const oManual = document.createElement("option");
+    oManual.value = CHAT_MANUAL;
+    oManual.textContent = t("chat.manualOpt");
+    oManual.dataset.kind = "manual";
+    mSel.appendChild(oManual);
+  });
+  updateChatTip();
+  // —— 第二步: 适配器 ——
+  fillAdapterSelect(preferAdapterPath);
 }
 
-document.querySelectorAll('input[name="a-mode"]').forEach((r) => {
-  r.addEventListener("change", () => {
-    const m = currentAgentMode();
-    $("a-fields-c").hidden = m !== "C";
-    $("a-fields-a").hidden = m !== "A";
-    $("a-fields-b").hidden = m !== "B";
+/** 适配器下拉：不使用 / 训练产出 / 手动 */
+function fillAdapterSelect(preferPath) {
+  const sel = $("chat-adapter");
+  withPreservedValue(sel, () => {
+    sel.innerHTML = "";
+    const oNone = document.createElement("option");
+    oNone.value = "";
+    oNone.textContent = t("chat.noAdapter");
+    sel.appendChild(oNone);
+    if (OUTPUTS.length) {
+      const g = document.createElement("optgroup");
+      g.label = t("chat.adapterGroup");
+      for (const e of OUTPUTS) {
+        const opt = document.createElement("option");
+        opt.value = e.path;
+        opt.textContent = `${e.dir}/${e.name}`;
+        opt.dataset.kind = "path";
+        g.appendChild(opt);
+      }
+      sel.appendChild(g);
+    } else {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = t("chat.noAdapters");
+      opt.disabled = true;
+      sel.appendChild(opt);
+    }
+    const oManual = document.createElement("option");
+    oManual.value = CHAT_MANUAL;
+    oManual.textContent = t("chat.manualAdapterOpt");
+    oManual.dataset.kind = "manual";
+    sel.appendChild(oManual);
   });
+  if (preferPath) sel.value = preferPath;
+  updateChatTip();
+}
+
+/** 第一步/第二步选中项变化时，更新提示文案 */
+function updateChatTip() {
+  const tip = $("chat-tip");
+  const mOpt = $("chat-model").selectedOptions[0];
+  const aOpt = $("chat-adapter").selectedOptions[0];
+  let html = "";
+  if (mOpt) {
+    if (mOpt.dataset.kind === "local") html = t("chat.tipLocal");
+    else if (mOpt.dataset.kind === "online") html = t("chat.tipOnline");
+    else if (mOpt.dataset.kind === "ollama") html = t("chat.tipOllama");
+    else if (mOpt.dataset.kind === "manual") html = t("chat.tipManual");
+  }
+  if (aOpt && aOpt.dataset.kind === "manual") html += (html ? "<br>" : "") + t("chat.tipManual");
+  tip.innerHTML = html;
+  tip.hidden = !html;
+}
+
+$("chat-model").addEventListener("change", updateChatTip);
+$("chat-adapter").addEventListener("change", () => {
+  updateChatTip();
+  // 选手动路径时展开高级设置，直接把光标送进去
+  const aOpt = $("chat-adapter").selectedOptions[0];
+  if (aOpt && aOpt.dataset.kind === "manual") {
+    const det = document.querySelector("details.advanced");
+    if (det) det.open = true;
+    $("a-adapter").focus();
+  }
 });
 
 agentView.onStart = async () => {
   const task = $("a-task").value.trim();
-  if (!task) { toast("请先填写任务内容"); return; }
-  const mode = currentAgentMode();
+  if (!task) { toast(t("chat.needTask")); return; }
+  const mOpt = $("chat-model").selectedOptions[0];
+  if (!mOpt || !mOpt.value) { toast(t("chat.needModel")); return; }
+  const kind = mOpt.dataset.kind;
+  if (kind === "manual" && !$("a-model-path").value.trim()) {
+    document.querySelector("details.advanced").open = true;
+    $("a-model-path").focus();
+    toast(t("chat.needModel"));
+    return;
+  }
+
   const body = {
-    mode,
     task,
     max_new_tokens: +$("a-tokens").value,
     max_steps: +$("a-steps").value,
   };
-  if (mode === "C") {
-    body.model_path = $("a-model-path").value.trim();
-    body.adapter = $("a-adapter").value.trim();
-    if (!body.model_path) { toast("请填写本地基座模型路径"); return; }
-  } else if (mode === "A") {
-    body.model_source = $("a-source").value;
-    body.model = $("a-model").value.trim();
-    body.adapter = $("a-adapter2").value.trim();
-  } else {
+  if (kind === "ollama") {
+    body.mode = "B";
     body.ollama_url = $("a-ollama-url").value.trim();
     body.ollama_model = $("a-ollama-model").value.trim();
+  } else {
+    if (kind === "online") {
+      body.mode = "A";
+      body.model_source = mOpt.dataset.source || "modelscope";
+      body.model = mOpt.value;
+    } else {
+      body.mode = "C";
+      body.model_path = kind === "manual" ? $("a-model-path").value.trim() : mOpt.dataset.path;
+    }
+    // 适配器：空串 = 不使用（显式传空，避免回退默认 ./lora_output）
+    const aOpt = $("chat-adapter").selectedOptions[0];
+    body.adapter = aOpt && aOpt.dataset.kind === "manual"
+      ? $("a-adapter").value.trim()
+      : (aOpt ? aOpt.value : "");
   }
+
   try {
     const r = await api("/api/agent/run", {
       method: "POST",
@@ -518,6 +918,7 @@ agentView.onStart = async () => {
 };
 
 agentView.onStop = async () => {
+  agentView.setStopping();
   try { await api("/api/agent/stop", { method: "POST" }); }
   catch (e) { toast(e.message); }
 };
@@ -527,7 +928,7 @@ agentView.onStop = async () => {
  * ============================================================ */
 const tinyView = new JobView({
   logEl: $("tiny-log"), stateEl: $("tiny-state"),
-  startBtn: $("btn-tiny"), stopBtn: $("btn-tiny-stop"),
+  stopBtn: $("btn-tiny-stop"),
 });
 
 tinyView.onStart = async () => {
@@ -544,39 +945,72 @@ tinyView.onStart = async () => {
     tinyView.watchStatus("/api/tiny/status", 2000, (s) => {
       if (s.state !== "running") {
         tinyView.stopWatch();
-        if (s.state === "done") toast("微型模型已生成，可在训练控制台用「本地路径」来源选择它");
+        if (s.state === "done") {
+          toast(t("tiny.done"));
+          loadImportedModels();
+          buildChatSelects();
+          loadModels();
+        }
       }
     });
   } catch (e) { toast(e.message); }
 };
 
 tinyView.onStop = async () => {
+  tinyView.setStopping();
   try { await api("/api/tiny/stop", { method: "POST" }); }
   catch (e) { toast(e.message); }
 };
 
-// 页面加载时探测一次各作业状态（刷新页面不丢进行中的任务）
+/* ============================================================
+ * 断线续跑：页面加载时探测各作业状态
+ * （服务器重启过也能接上仍在跑的作业）
+ * ============================================================ */
+const JOB_TAB_KEYS = { train: "tab.train", agent: "tab.chat", tiny: "job.tiny", import: "tab.import" };
+
 async function resumeJobStates() {
+  const adopted = [];
   for (const [path, view, sse] of [
     ["/api/train/status", trainView, "/api/train/logs"],
     ["/api/agent/status", agentView, "/api/agent/logs"],
     ["/api/tiny/status", tinyView, "/api/tiny/logs"],
+    ["/api/models/import/status", importView, "/api/models/import/logs"],
   ]) {
     try {
       const s = await api(path);
       view.setState(s.state);
+      if (s.adopted) adopted.push(s.kind);
       if (s.state === "running") {
         view.connectSSE(sse);
         view.watchStatus(path, 2000, (st) => { if (st.state !== "running") view.stopWatch(); });
       }
     } catch { /* 忽略 */ }
   }
+  if (adopted.length) {
+    const kinds = adopted.map((k) => t(JOB_TAB_KEYS[k] || k)).join("、");
+    toast(t("app.adopted", { kinds }), 6000);
+  }
 }
 
 /* ============================================================
  * 启动
  * ============================================================ */
-loadEnv();
-loadModels();
-loadDatasets();
-resumeJobStates();
+async function boot() {
+  initLang();
+  // 先拿已导入模型（训练/对话下拉的本地组依赖它），再并行加载其余
+  await loadImportedModels();
+  await Promise.all([loadEnv(), loadModels(), loadDatasets(), loadOutputs()]);
+  buildChatSelects();
+  resumeJobStates();
+  // 语言切换：重渲染所有动态内容
+  onLangChange(() => {
+    loadEnv();
+    loadModels();
+    loadDatasets();
+    loadOutputs();
+    loadImportedModels();
+    buildChatSelects();
+  });
+}
+
+boot();

@@ -24,3 +24,6 @@ Thumbs.db
 # IDE
 .idea/
 .vscode/
+
+# WebUI 运行时状态/日志(断线续跑用, 不入库)
+webui/runtime/
