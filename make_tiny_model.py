@@ -25,7 +25,7 @@ def fetch_tokenizer():
     return path
 
 
-def build_tiny(tok_src):
+def build_tiny(tok_src, out=TINY):
     from transformers import Qwen2Config, Qwen2ForCausalLM, AutoTokenizer
 
     tok = AutoTokenizer.from_pretrained(tok_src)
@@ -41,15 +41,24 @@ def build_tiny(tok_src):
         max_position_embeddings=512, tie_word_embeddings=False, **special,
     )
     model = Qwen2ForCausalLM(cfg)
-    os.makedirs(TINY, exist_ok=True)
-    model.save_pretrained(TINY, safe_serialization=True)
+    os.makedirs(out, exist_ok=True)
+    model.save_pretrained(out, safe_serialization=True)
     for name in TOKENIZER_FILES:
         src = os.path.join(tok_src, name)
         if os.path.exists(src):
-            shutil.copy2(src, os.path.join(TINY, name))
+            shutil.copy2(src, os.path.join(out, name))
     # 删除 tokenizer_config 里指向旧架构的字段, 避免自动加载类型歧义
     total = sum(p.numel() for p in model.parameters())
-    print(f"[ok] 微型模型已写入 {TINY} (参数量 {total/1e6:.2f}M, vocab 151936)")
+    print(f"[ok] 微型模型已写入 {out} (参数量 {total/1e6:.2f}M, vocab 151936)")
+
+
+def _parse_out():
+    """可选 --output <目录>（默认 models/tiny-qwen-test；WebUI 会传自定义路径）。"""
+    if "--output" in sys.argv:
+        i = sys.argv.index("--output")
+        if i + 1 < len(sys.argv):
+            return os.path.abspath(sys.argv[i + 1])
+    return TINY
 
 
 if __name__ == "__main__":
@@ -57,5 +66,5 @@ if __name__ == "__main__":
         src = fetch_tokenizer()
     else:
         src = os.path.join(CACHE, "qwen", "Qwen2.5-0.5B-Instruct")
-    build_tiny(src)
+    build_tiny(src, _parse_out())
     print("[done] 冒烟测试模型就绪")
