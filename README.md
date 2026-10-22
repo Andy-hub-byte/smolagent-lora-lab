@@ -56,7 +56,33 @@ python agent.py --mode A --model qwen2.5-7b --adapter ./lora_output --task "帮�
 新手只需改 `train_lora.py` 顶部的 **CONFIG 集中配置区**(学习率/轮数/LoRA 秩等都有中文注释)，
 所有配置项都能用命令行参数覆盖，两者等价。
 
-## 4. 三种使用模式 / Three modes
+## 4. Web 图形界面 / WebUI(推荐新手)
+
+嫌记命令麻烦？项目自带一个**本地网页控制台**，浏览器里点按钮就能完成
+「体检 → 训练 → 看 loss 曲线 → 挂适配器测试」全流程：
+
+```bash
+python webui/app.py                  # 启动并自动打开 http://127.0.0.1:7860
+python webui/app.py --host 0.0.0.0   # 允许平板/手机同局域网访问(需先 pip install flask)
+```
+
+**Windows 用户**：直接双击根目录的 `启动WebUI.bat`。
+
+五个页签：
+
+| 页签 | 能干什么 |
+|---|---|
+| **环境体检** | 一键检查依赖版本 / CUDA / 内存，给出硬件建议 |
+| **训练控制台** | 表单选择全部训练参数(与命令行等价，实时预览命令)，开始/停止训练，**loss 实时曲线** |
+| **Agent 测试台** | 模式 A/B/C 切换，挂上适配器跑单任务，终端式实时日志 |
+| **数据集** | 浏览 `datasets/` 下的 jsonl，在线预览前几条 |
+| **产出管理** | 自动扫描各输出目录里的适配器 / checkpoint 快照 |
+
+> WebUI 只是 `train_lora.py` / `agent.py` 的**图形外壳**：表单参数与命令行完全等价
+> (界面左侧有实时命令预览，可照抄复用)；刷新页面会自动重连进行中的任务。
+> 纯命令行用户不装 flask 也能用全部功能。详见 `webui/README.md`。
+
+## 5. 三种使用模式 / Three modes
 
 | 模式 | 命令 | 说明 |
 |---|---|---|
@@ -64,7 +90,7 @@ python agent.py --mode A --model qwen2.5-7b --adapter ./lora_output --task "帮�
 | **B** Ollama | `agent.py --mode B` | 对接本地 Ollama 服务(需先 `ollama pull qwen2.5:7b-instruct`) |
 | **C** 本地基座 + LoRA | `agent.py --mode C --model-path ./models/xxx --adapter ./lora_output` | 基座已在本地文件夹(如手动下载过) |
 
-## 5. 国内 / 海外使用说明 / China & overseas usage
+## 6. 国内 / 海外使用说明 / China & overseas usage
 
 本项目内置**双模型源**，同一份训练代码/数据集/产出的 LoRA 完全兼容，只是下载渠道不同：
 
@@ -104,7 +130,7 @@ python agent.py --mode A --model qwen2.5-7b --adapter ./lora_output --task "帮�
 > 两个模型源只是**下载渠道不同**：训练参数、数据集、最终产出的 LoRA 完全通用。
 > 在魔练下载的基座训出的适配器，挂到 HF 下载的同一模型上同样有效。
 
-## 6. 数据集 / Datasets
+## 7. 数据集 / Datasets
 
 `datasets/` 目录存放 jsonl 训练数据，每行一条对话：
 
@@ -123,7 +149,7 @@ python agent.py --mode A --model qwen2.5-7b --adapter ./lora_output --task "帮�
 - `--dataset-mode single --dataset-file datasets/dataset_daily.jsonl`：只用一个文件
 - **想教模型新知识？往 `datasets/` 里按同样格式加数据，重训即可。** 数据质量 > 数据数量。
 
-## 7. 训练参数速查 / Training options
+## 8. 训练参数速查 / Training options
 
 ```bash
 python train_lora.py --model qwen2.5-7b \
@@ -149,7 +175,7 @@ python train_lora.py --model qwen2.5-7b --resume
 python train_lora.py --model qwen2.5-7b --no-resume
 ```
 
-## 8. Agent 能力 / Agent capabilities
+## 9. Agent 能力 / Agent capabilities
 
 `agent.py` 基于 smolagents `CodeAgent`(模型写 Python 代码调工具)：
 
@@ -158,13 +184,19 @@ python train_lora.py --model qwen2.5-7b --no-resume
 - **安全护栏**：单任务最大步数(默认 8)防失控烧时间；代码块标签显式锁定 `<code>...</code>`
 - **中英双语**系统指令，适配 Qwen 系聊天模板
 
-## 9. 目录结构 / Project layout
+## 10. 目录结构 / Project layout
 
 ```
 smolagent-lora-lab/
 ├── train_lora.py          # 训练器(CONFIG 集中配置 + 双模型源 + 断点续训)
 ├── agent.py               # 本地智能体(模式 A/B/C + 工具 + 记忆)
+├── make_tiny_model.py     # 生成微型测试模型(CPU 冒烟测试用, 无需下载)
 ├── requirements.txt       # 依赖清单(含 CUDA / ARM 双说明)
+├── 启动WebUI.bat          # Windows 双击启动 Web 界面
+├── webui/                 # Web 图形界面(Flask 后端 + 原生前端, 零构建)
+│   ├── app.py             #   后端: 训练/Agent 进程管理 + SSE 实时日志 + loss 曲线 API
+│   ├── README.md          #   WebUI 详细使用说明
+│   └── static/            #   前端(index.html / style.css / app.js)
 ├── datasets/              # 训练数据(118 条, 4 个文件)
 │   ├── dataset_daily.jsonl
 │   ├── dataset_study.jsonl
@@ -175,7 +207,7 @@ smolagent-lora-lab/
 └── agent_memory.json      # Agent 记忆(首次交互后生成)
 ```
 
-## 10. 常见问题 / FAQ
+## 11. 常见问题 / FAQ
 
 **Q: 训练中断了怎么办？**
 A: 直接重跑同一条命令加 `--resume`，自动从 `lora_output/checkpoint-*` 最新快照继续。
@@ -191,7 +223,12 @@ A: 不能单独用。适配器只含增量权重(几十~几百 MB)，必须搭�
 **Q: 模型回答没有变好？**
 A: 检查数据集是否覆盖目标场景；数据少时先 `--num-epochs 5~10`；避免用大模型生成的低质数据。
 
-## 11. 测试流程清单 / Testing checklist
+**Q: WebUI 打不开 / 端口被占用？**
+A: 先确认 `pip install flask`；换端口启动 `python webui/app.py --port 8080`；
+平板/手机访问需加 `--host 0.0.0.0` 且与电脑在同一局域网，浏览器输入 `http://<电脑IP>:7860`。
+WebUI 全部功能都有对应的命令行等价形式，临时用命令行顶班不影响进度。
+
+## 12. 测试流程清单 / Testing checklist
 
 ```bash
 # 1) 语法与 CLI 自检
@@ -202,6 +239,12 @@ python train_lora.py --model-source local --model <小模型路径> --dataset-mo
 
 # 3) 微型冒烟(CPU 几分钟): 训练 3 步 → 保存快照 → --resume 续训 → Agent 挂适配器
 #    详见 dev_note.md【冒烟测试记录】
+
+# 3b) WebUI 端到端(等价于上面全部步骤的图形版):
+python make_tiny_model.py --skip-download    # 有 tokenizer 缓存时离线生成微型模型
+python webui/app.py                           # 打开 http://127.0.0.1:7860
+#    环境体检 → 训练控制台(源 local, 模型 ./models/tiny-qwen-test, max-steps 3)
+#    → 看 loss 曲线 → Agent 测试台(模式 C, 挂刚产出的适配器)
 
 # 4) 真实训练(按显存选模型), 观察 loss 下降
 python train_lora.py --model qwen2.5-7b
@@ -215,6 +258,6 @@ python agent.py --mode A --model qwen2.5-7b          # 不挂适配器作对照
 # 7) 工具与记忆: Agent 对话几轮 → 检查 agent_memory.json 是否落盘
 ```
 
-## 12. 技术栈 / Tech stack
+## 13. 技术栈 / Tech stack
 
 [smolagents](https://github.com/huggingface/smolagents) · [transformers](https://github.com/huggingface/transformers) · [peft](https://github.com/huggingface/peft) · [trl](https://github.com/huggingface/trl) · [ModelScope](https://modelscope.cn) · [Hugging Face](https://huggingface.co)
