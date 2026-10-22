@@ -22,6 +22,7 @@
 | 文件工具安全边界 | 【自研改造】 | `_safe_path()` 拒绝 `../` 与绝对路径越界 |
 | 记忆存储与注入 | 【自研改造】 | `MemoryStore`：json 持久化、保留 50 条、`summary()` 注入 instructions |
 | 代码块标签锁定 | 【自研改造】 | `CODE_TAGS = ("<code>", "</code>")` 显式传入 CodeAgent，防版本默认值漂移 |
+| **WebUI 图形界面** | 【自研改造·阶段三】 | `webui/`：Flask 零构建单页应用，把 train_lora.py / agent.py 包装成表单 + 实时 loss 曲线 + SSE 终端日志；只做进程管理与展示，训练/推理逻辑仍归两个脚本 |
 
 ### 关键坑位记录 / Pitfalls hit
 
@@ -31,6 +32,10 @@
 4. **bitsandbytes 无 ARM64 构建**：平板 CPU 无法 4bit QLoRA → 脚本自动降级 fp32 LoRA 并阻止 7B/14B。
 5. **CONFIG 与 argparse 键必须一一对应**：CLI 覆盖只遍历 CONFIG 键，漏定义(如 `resume`/`task`)会 KeyError——冒烟测试抓到过两次。
 6. **transformers≥4.56**：`from_pretrained` 推荐 `dtype=`(弃用 `torch_dtype=`)，train_lora.py 已用新名。
+7. **WebUI 子进程相对路径**：`--dataset-file` 必须传 `datasets/xxx.jsonl`(相对项目根)，只传文件名会在 cwd 下找不到；`--model ./models/tiny-qwen-test` 同理。
+8. **WebUI 产出扫描**：用户可用 `--output-dir` 指定任意目录，`/api/outputs` 不能写死 `lora_output/`，需扫描根目录下所有含 `adapter_config.json` 或 `checkpoint-*` 的目录。
+9. **Job 单例互斥**：同 kind 任务运行中拒绝重复启动；页面刷新后 `resumeJobStates()` 自动重连 SSE，避免"僵尸训练看不见"。
+10. **SSE 日志缓冲**：`deque(maxlen=5000)` 环形缓冲 + `queue.Queue` 订阅广播，晚连上的客户端先补发缓冲末尾，断线重连不丢上下文。
 
 ## 2. 冒烟测试记录 / Smoke test record
 
@@ -47,6 +52,10 @@
 | 6 | Agent 挂适配器 | `agent.py --mode C --model-source local --adapter ...` | ✅ CodeAgent 跑完 max steps 正常退出 |
 | 7 | 记忆持久化 | 任务后检查 json | ✅ 落盘 + 重载 2 条 |
 | 8 | 工具与安全边界 | `smoke_tools.py` 直接调工具 | ✅ 读写列全过；`../`、绝对路径越界均被拒 |
+| 9 | WebUI 训练链路 | `/api/train/start`(local + tiny, 3 步) | ✅ returncode 0，3 个 loss 点，适配器落盘 |
+| 10 | WebUI loss 曲线 | `/api/train/loss` | ✅ step/loss/ts 三点齐全 |
+| 11 | WebUI Agent 测试台 | 模式 C 挂适配器单任务 | ✅ 加载基座+适配器，跑完 max steps 正常退出 |
+| 12 | WebUI 产出扫描 | 自定义 `--output-dir` | ✅ 扫到适配器目录与 checkpoint-3(修复了只认 `lora_output/` 的漏洞) |
 
 冒烟中修复的 bug：`train_dataset` 类型、`cfg["resume"]` / `cfg["task"]` 缺失、
 local 模式误解析仓库 ID、docstring 参数名不一致。修复后全绿。
@@ -63,6 +72,17 @@ python train_lora.py ...(同上) --resume --max-steps 5     # 断点续训
 python agent.py --mode C --model-source local --model-path ./models/tiny-qwen-test \
     --adapter ./outputs/smoke-adapter --task "你好，请用一句话介绍你自己" --quiet
 python smoke_tools.py                     # 工具/记忆/安全边界(不加载模型, 秒级)
+```
+
+WebUI 冒烟(上述 1~11 的图形版复现)：
+
+```bash
+pip install flask
+python make_tiny_model.py --skip-download   # 有 tokenizer 缓存时离线生成微型模型
+python webui/app.py                         # 打开 http://127.0.0.1:7860
+# 环境体检全绿 → 训练控制台填: 源=local, 模型=./models/tiny-qwen-test,
+#   数据集=datasets/dataset_agent_tool.jsonl, max-steps=3 → 开始训练
+# → loss 曲线出现 3 点 → Agent 测试台选模式 C, 适配器填刚产出的目录 → 运行
 ```
 
 ## 3. 版本策略 / Versioning
