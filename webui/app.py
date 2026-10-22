@@ -622,6 +622,14 @@ def main():
     ap.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
     args = ap.parse_args()
 
+    # 云端/容器部署兼容: 注入 PORT 时自动改为监听 0.0.0.0 且不自动开浏览器
+    env_port = os.environ.get("PORT")
+    cloud = bool(env_port)
+    if cloud:
+        args.port = int(env_port)
+        args.host = "0.0.0.0"
+        args.no_browser = True
+
     url = f"http://{'localhost' if args.host == '127.0.0.1' else args.host}:{args.port}/"
     print("=" * 60)
     print("  smolagent-lora-lab · Web 微调工作台")
