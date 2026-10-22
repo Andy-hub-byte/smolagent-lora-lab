@@ -523,6 +523,7 @@ def main():
     ap.add_argument("--datasets-dir", default=None, help="all 模式下的数据集目录")
     ap.add_argument("--lora-rank", type=int, default=None)
     ap.add_argument("--lora-alpha", type=int, default=None)
+    ap.add_argument("--lora-dropout", type=float, default=None, help="LoRA dropout, 防止过拟合(默认 0.05)")
     ap.add_argument("--batch-size", type=int, default=None)
     ap.add_argument("--grad-accum", type=int, default=None)
     ap.add_argument("--learning-rate", type=float, default=None)
