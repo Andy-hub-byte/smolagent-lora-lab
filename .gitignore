@@ -2,6 +2,7 @@
 models/
 outputs/
 lora_output/
+lora-*/              # 自定义 --output-dir 常见命名(lora-test / lora-v1 ...)
 checkpoint-*/
 *.safetensors
 *.pt
