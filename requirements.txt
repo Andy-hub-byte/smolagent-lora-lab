@@ -26,6 +26,9 @@ smolagents>=1.20              # CodeAgent / TransformersModel / @tool
 modelscope>=1.15              # 国内源(默认): 短名自动路由到魔搭
 huggingface_hub>=0.24         # 海外源: --model-source huggingface; Llama 门控模型需先 hf auth login
 
+# —— Web 图形界面(可选, 不用命令行才需要) ——
+flask>=3.0                   # WebUI 后端(webui/app.py); 纯命令行用户可不装
+
 # —— 可选(体验更好) ——
 psutil>=5.9                   # 内存检测(缺失时自动回退 /proc/meminfo)
 
