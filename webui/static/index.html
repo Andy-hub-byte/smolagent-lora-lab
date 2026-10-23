@@ -3,389 +3,424 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#0b0f1a" />
+  <meta name="theme-color" content="#0d0d10" />
   <title>smolagent-lora-lab · Web 微调工作台</title>
   <link rel="stylesheet" href="/static/style.css" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234f8ff7'/%3E%3Cpath d='M10 22l5-12 4 8 3-5' stroke='%23fff' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%235b8def'/%3E%3Cpath d='M10 22l5-12 4 8 3-5' stroke='%23fff' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
 </head>
 <body>
-  <header id="topbar">
-    <div class="brand">
-      <span class="brand-logo" aria-hidden="true"></span>
-      <div class="brand-title">
-        <strong>smolagent-lora-lab</strong>
-        <small data-i18n="app.subtitle">Web 微调工作台 · QLoRA / LoRA 训练 + 模型对话</small>
-      </div>
-    </div>
-    <div class="topbar-right">
-      <button id="btn-lang" class="hud-lang" title="Switch language">🌐 EN</button>
-      <span id="env-chip" class="chip chip-warn">
-        <i class="dot"></i><span id="env-chip-text" data-i18n="app.envDetecting">环境检测中…</span>
-      </span>
-    </div>
-  </header>
-
-  <nav id="tabs">
-    <button class="tab active" data-tab="env"><span data-i18n="tab.env">🩺 环境体检</span></button>
-    <button class="tab" data-tab="import"><span data-i18n="tab.import">📥 模型导入</span></button>
-    <button class="tab" data-tab="train"><span data-i18n="tab.train">🚀 训练</span></button>
-    <button class="tab" data-tab="chat"><span data-i18n="tab.chat">💬 模型对话</span></button>
-    <button class="tab" data-tab="data"><span data-i18n="tab.data">📚 数据集</span></button>
-    <button class="tab" data-tab="out"><span data-i18n="tab.out">📦 产出管理</span></button>
-  </nav>
-
-  <main id="content">
-
-    <!-- ============ 环境体检 ============ -->
-    <section class="page active" id="page-env">
-      <div class="grid-2">
-        <div class="card">
-          <h3 data-i18n="env.title">运行环境</h3>
-          <table class="kv" id="env-table">
-            <tbody><tr><td data-i18n="data.loading">检测中…</td><td></td></tr></tbody>
-          </table>
-        </div>
-        <div class="card">
-          <h3 data-i18n="env.deps">依赖情况</h3>
-          <table class="kv" id="deps-table">
-            <tbody><tr><td data-i18n="data.loading">检测中…</td><td></td></tr></tbody>
-          </table>
-          <div id="env-advice" class="advice"></div>
-        </div>
-      </div>
-      <div class="card">
-        <h3 data-i18n="env.quick">快速自检（无网络 / 无显卡也能用）</h3>
-        <p class="hint" data-i18n="env.tinyHint">
-          生成一个<strong>微型随机权重 Qwen 模型</strong>（约 10MB，真实 tokenizer），
-          用于在本地完整跑通「训练 → 保存适配器 → 对话」全链路，无需下载 GB 级权重。
-          模型文件在 <code>models/</code> 目录，仅用于测试，<strong>不要用于正式对话</strong>。
-        </p>
-        <div class="row">
-          <input id="tiny-out" type="text" value="./models/tiny-qwen-test" />
-          <button class="btn primary" id="btn-tiny" data-i18n="env.btnTiny">生成微型模型</button>
-        </div>
-        <div class="job-bar" id="tiny-bar">
-          <span class="job-state" id="tiny-state">空闲</span>
-          <button class="btn danger sm" id="btn-tiny-stop" hidden data-stop-label="train.stop" data-i18n="train.stop">停止</button>
-        </div>
-        <pre class="terminal sm" id="tiny-log"></pre>
-      </div>
-    </section>
-
-    <!-- ============ 模型导入 ============ -->
-    <section class="page" id="page-import">
-      <div class="card">
-        <h3 data-i18n="imp.title">导入外部模型</h3>
-        <p class="hint" data-i18n="imp.intro">把已经下载好的模型加进来，之后训练和对话都能直接选它。支持三种方式，任选其一。</p>
-      </div>
-
-      <div class="grid-3">
-        <div class="card">
-          <h4 data-i18n="imp.wayPath">方式一 · 本机文件夹</h4>
-          <p class="hint" data-i18n="imp.wayPathHint">填写模型文件夹的绝对路径（在运行本服务的电脑上），会拷贝到项目的 models/ 目录。适合模型已经在你电脑硬盘里的情况。</p>
-          <label><span data-i18n="imp.pathLabel">模型文件夹绝对路径</span>
-            <input id="imp-path" type="text" placeholder="/path/to/Qwen2.5-1.5B-Instruct" />
-          </label>
-          <label><span data-i18n="imp.nameLabel">目录名（可选）</span>
-            <input id="imp-path-name" type="text" data-i18n-ph="imp.namePh" placeholder="默认用原文件夹名" />
-          </label>
-          <label class="check"><input id="imp-path-overwrite" type="checkbox" /> <span data-i18n="imp.overwrite">覆盖已存在的同名目录</span></label>
-          <button class="btn primary" id="btn-imp-path" data-i18n="imp.btnPath">导入到 models/</button>
-        </div>
-
-        <div class="card">
-          <h4 data-i18n="imp.wayRepo">方式二 · Hugging Face / ModelScope 仓库</h4>
-          <p class="hint" data-i18n="imp.wayRepoHint">填写仓库 ID 直接下载到 models/ 目录。国内推荐魔搭；Llama 等门控模型需先在 HF 官网同意协议并运行 hf auth login。支持内置短名（如 qwen2.5-1.5b）。</p>
-          <label><span data-i18n="imp.repoSource">来源</span>
-            <select id="imp-source">
-              <option value="modelscope">魔搭 ModelScope（国内快）</option>
-              <option value="huggingface">Hugging Face（海外 / 门控需登录）</option>
-            </select>
-          </label>
-          <label><span data-i18n="imp.repoLabel">仓库 ID</span>
-            <input id="imp-repo" type="text" data-i18n-ph="imp.repoPh" placeholder="Qwen/Qwen2.5-1.5B-Instruct 或 qwen2.5-1.5b（内置短名）" />
-          </label>
-          <label><span data-i18n="imp.nameLabel">目录名（可选）</span>
-            <input id="imp-repo-name" type="text" data-i18n-ph="imp.namePh" placeholder="默认用仓库名" />
-          </label>
-          <label class="check"><input id="imp-repo-overwrite" type="checkbox" /> <span data-i18n="imp.overwrite">覆盖已存在的同名目录</span></label>
-          <button class="btn primary" id="btn-imp-repo" data-i18n="imp.btnRepo">开始下载</button>
-        </div>
-
-        <div class="card">
-          <h4 data-i18n="imp.wayUpload">方式三 · 网页上传</h4>
-          <p class="hint" data-i18n="imp.wayUploadHint">适合平板 / 手机：直接把模型文件（可多选，或打包成一个 zip）传上来，自动落到 models/ 目录。</p>
-          <label><span data-i18n="imp.nameLabelReq">目录名（必填）</span>
-            <input id="imp-upload-name" type="text" placeholder="例如 my-qwen" />
-          </label>
-          <label><span data-i18n="imp.uploadLabel">选择文件（可多选 / zip）</span>
-            <input id="imp-files" type="file" multiple />
-          </label>
-          <label class="check"><input id="imp-upload-overwrite" type="checkbox" /> <span data-i18n="imp.overwrite">覆盖已存在的同名目录</span></label>
-          <button class="btn primary" id="btn-imp-upload" data-i18n="imp.btnUpload">上传并导入</button>
+  <div class="shell">
+    <!-- ============ 左侧边栏（对标 LM Studio） ============ -->
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-logo" aria-hidden="true"></span>
+        <div class="brand-text">
+          <strong>LoRA Lab</strong>
+          <small data-i18n="app.subtitle">Web 微调工作台 · QLoRA / LoRA 训练 + 模型对话</small>
         </div>
       </div>
 
-      <div class="card" id="imp-job-card" hidden>
-        <div class="run-head">
-          <span class="job-state" id="imp-state">空闲</span>
-          <span class="run-meta" id="imp-meta"></span>
-          <button class="btn danger sm" id="btn-imp-stop" hidden data-stop-label="train.stop" data-i18n="train.stop">停止</button>
-        </div>
-        <h4 data-i18n="imp.logTitle">下载日志</h4>
-        <pre class="terminal" id="imp-log"></pre>
+      <nav class="nav">
+        <button class="nav-item active" data-tab="chat">
+          <span class="nav-ico" aria-hidden="true">💬</span>
+          <span class="nav-label" data-i18n="nav.chat">模型对话</span>
+        </button>
+        <button class="nav-item" data-tab="train">
+          <span class="nav-ico" aria-hidden="true">🚀</span>
+          <span class="nav-label" data-i18n="nav.train">训练</span>
+        </button>
+        <button class="nav-item" data-tab="import">
+          <span class="nav-ico" aria-hidden="true">📥</span>
+          <span class="nav-label" data-i18n="nav.import">模型导入</span>
+        </button>
+        <button class="nav-item" data-tab="data">
+          <span class="nav-ico" aria-hidden="true">📚</span>
+          <span class="nav-label" data-i18n="nav.data">数据集</span>
+        </button>
+        <button class="nav-item" data-tab="out">
+          <span class="nav-ico" aria-hidden="true">📦</span>
+          <span class="nav-label" data-i18n="nav.out">产出管理</span>
+        </button>
+        <button class="nav-item" data-tab="env">
+          <span class="nav-ico" aria-hidden="true">🩺</span>
+          <span class="nav-label" data-i18n="nav.env">环境体检</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-foot">
+        <span id="env-chip" class="chip chip-warn" title="">
+          <i class="dot"></i><span id="env-chip-text" data-i18n="app.envDetecting">环境检测中…</span>
+        </span>
+        <button id="btn-lang" class="hud-lang" title="Switch language">🌐 EN</button>
       </div>
+    </aside>
 
-      <div class="card">
-        <h3 data-i18n="imp.listTitle">已导入的模型</h3>
-        <p class="hint" data-i18n="imp.listHint">这些模型位于 models/ 目录，训练和对话都能直接选。</p>
-        <table class="table" id="imp-table">
-          <thead><tr>
-            <th data-i18n="imp.colName">目录</th>
-            <th data-i18n="imp.colArch">架构</th>
-            <th data-i18n="imp.colWeights">权重文件</th>
-            <th data-i18n="imp.colValid">格式校验</th>
-            <th data-i18n="imp.colSize">大小</th>
-            <th data-i18n="imp.colTime">导入时间</th>
-            <th data-i18n="data.colOps">操作</th>
-          </tr></thead>
-          <tbody><tr><td colspan="7" data-i18n="data.loading">加载中…</td></tr></tbody>
-        </table>
-      </div>
-    </section>
+    <!-- ============ 主区域 ============ -->
+    <div class="main">
+      <main id="content">
 
-    <!-- ============ 训练 ============ -->
-    <section class="page" id="page-train">
-      <div class="card next-tip">
-        <span data-i18n="train.nextTip">训练完成后，产出会出现在「产出管理」；想看看模型变得多聪明？去「💬 模型对话」挂上适配器问它几个问题。</span>
-        <button class="btn sm" id="btn-goto-chat" data-i18n="train.gotoChat">去对话 →</button>
-      </div>
-      <div class="train-layout">
-        <div class="card form-card">
-          <h3 data-i18n="train.config">训练配置</h3>
-          <form id="train-form" onsubmit="return false;">
-            <fieldset>
-              <legend data-i18n="train.model">模型</legend>
-              <label><span data-i18n="train.source">来源</span>
-                <select id="f-source">
-                  <option value="modelscope" data-i18n="src.modelscope">魔搭 ModelScope（国内推荐）</option>
-                  <option value="huggingface" data-i18n="src.huggingface">Hugging Face（Llama 需门控授权）</option>
-                  <option value="local" data-i18n="src.local">本地路径（已导入的模型）</option>
-                </select>
-              </label>
-              <label><span data-i18n="train.base">基座模型</span>
-                <div class="row">
-                  <select id="f-model-preset"></select>
-                  <span class="or" data-i18n="train.or">或</span>
-                  <input id="f-model" type="text" data-i18n-ph="train.modelPh" placeholder="自定义短名 / 仓库ID / 本地路径" />
-                </div>
-              </label>
-              <label><span data-i18n="train.cache">模型缓存目录</span>
-                <input id="f-cache" type="text" placeholder="./models" />
-              </label>
-            </fieldset>
-
-            <fieldset>
-              <legend data-i18n="train.dataset">数据集</legend>
-              <label><span data-i18n="train.dataset">模式</span>
-                <select id="f-ds-mode">
-                  <option value="all" data-i18n="train.dsAll">合并 datasets 目录全部 jsonl</option>
-                  <option value="single" data-i18n="train.dsSingle">只用下面选中的一个文件</option>
-                </select>
-              </label>
-              <label id="f-ds-file-wrap"><span data-i18n="train.file">文件</span>
-                <select id="f-ds-file"></select>
-              </label>
-            </fieldset>
-
-            <fieldset>
-              <legend data-i18n="train.lora">LoRA 参数</legend>
-              <div class="grid-3">
-                <label><span data-i18n="train.rank">秩 r</span>
-                  <input id="f-rank" type="number" min="4" max="128" step="4" value="16" />
-                </label>
-                <label><span data-i18n="train.alpha">alpha</span>
-                  <input id="f-alpha" type="number" min="4" max="256" step="4" value="32" />
-                </label>
-                <label><span data-i18n="train.dropout">dropout</span>
-                  <input id="f-dropout" type="number" min="0" max="0.5" step="0.01" value="0.05" />
-                </label>
-              </div>
-            </fieldset>
-
-            <fieldset>
-              <legend data-i18n="train.hyper">训练超参</legend>
-              <div class="grid-3">
-                <label><span data-i18n="train.bs">batch</span>
-                  <input id="f-bs" type="number" min="1" max="64" value="2" />
-                </label>
-                <label><span data-i18n="train.ga">梯度累积</span>
-                  <input id="f-ga" type="number" min="1" max="64" value="8" />
-                </label>
-                <label><span data-i18n="train.seq">最大序列长</span>
-                  <input id="f-seq" type="number" min="128" max="8192" step="128" value="1024" />
-                </label>
-                <label><span data-i18n="train.lr">学习率</span>
-                  <input id="f-lr" type="text" value="0.0002" />
-                </label>
-                <label><span data-i18n="train.ep">轮数 epochs</span>
-                  <input id="f-ep" type="number" min="0.1" max="100" step="0.1" value="3" />
-                </label>
-                <label><span data-i18n="train.steps">固定步数(-1)</span>
-                  <input id="f-steps" type="number" min="-1" max="100000" value="-1" />
-                </label>
-              </div>
-            </fieldset>
-
-            <fieldset>
-              <legend data-i18n="train.output">输出与快照</legend>
-              <div class="grid-3">
-                <label><span data-i18n="train.outDir">输出目录</span>
-                  <input id="f-out" type="text" value="./lora_output" />
-                </label>
-                <label><span data-i18n="train.save">每 N 步保存</span>
-                  <input id="f-save" type="number" min="1" max="10000" value="100" />
-                </label>
-                <label><span data-i18n="train.limit">保留快照数</span>
-                  <input id="f-limit" type="number" min="1" max="20" value="3" />
-                </label>
-              </div>
-              <div class="checks">
-                <label class="check"><input id="f-resume" type="checkbox" /> <span data-i18n="train.resume">断点续训（从最新快照继续）</span></label>
-                <label class="check"><input id="f-force" type="checkbox" /> <span data-i18n="train.force">硬件不足仍强制启动</span></label>
-              </div>
-            </fieldset>
-
-            <div class="form-actions">
-              <button class="btn primary big" id="btn-train-start" data-i18n="train.start">🚀 开始训练</button>
-              <button class="btn danger big" id="btn-train-stop" hidden data-stop-label="train.stop" data-i18n="train.stop">⏹ 停止训练</button>
-              <button class="btn" id="btn-train-reset" data-i18n="train.reset">重置为推荐值</button>
-            </div>
-            <p class="hint" id="train-cmd-preview"></p>
-          </form>
-        </div>
-
-        <div class="card run-card">
-          <div class="run-head">
-            <span class="job-state" id="train-state">空闲</span>
-            <span class="run-meta" id="train-meta"></span>
-          </div>
-          <div id="train-progress" class="progress" hidden><div id="train-progress-bar"></div></div>
-          <h4 data-i18n="train.lossTitle">Loss 曲线</h4>
-          <div id="loss-chart" class="chart-empty">开始训练后显示 loss 变化</div>
-          <h4 data-i18n="train.logTitle">实时日志</h4>
-          <pre class="terminal" id="train-log"></pre>
-        </div>
-      </div>
-    </section>
-
-    <!-- ============ 模型对话 ============ -->
-    <section class="page" id="page-chat">
-      <div class="card">
-        <h3 data-i18n="chat.title">和你的模型对话</h3>
-        <p class="hint" data-i18n="chat.intro">两种用法，都在这里：<strong>① 训练好的模型</strong>——选模型 + 选适配器；<strong>② 刚导入、没训练过的模型</strong>——只选模型，适配器选「不使用」。</p>
-      </div>
-
-      <div class="chat-layout">
-        <div class="card form-card">
-          <fieldset class="chat-step">
-            <legend data-i18n="chat.step1">第一步 · 选模型</legend>
-            <label><span data-i18n="chat.modelLabel">模型</span>
+        <!-- ============ 模型对话（对标 LM Studio 聊天页） ============ -->
+        <section class="page page-chat active" id="page-chat">
+          <!-- 顶部：模型选择器 + 适配器选择器 + 状态（LM Studio 顶部模型栏） -->
+          <div class="chat-topbar">
+            <div class="model-pill">
+              <span class="pill-label" data-i18n="chat.modelLabel">模型</span>
               <select id="chat-model"></select>
-            </label>
-            <p class="hint sm" id="chat-tip" hidden></p>
-          </fieldset>
-
-          <fieldset class="chat-step">
-            <legend data-i18n="chat.step2">第二步 · 选适配器（可选）</legend>
-            <label><span data-i18n="chat.adapterLabel">LoRA 适配器</span>
+            </div>
+            <div class="model-pill">
+              <span class="pill-label" data-i18n="chat.adapterLabel">LoRA 适配器</span>
               <select id="chat-adapter"></select>
-            </label>
-            <p class="hint sm" data-i18n="chat.tipAdapter">💡 适配器是微调产生的「补丁」，只有训练过的模型才需要。</p>
-          </fieldset>
+            </div>
+            <span class="job-state idle" id="agent-state">空闲</span>
+            <span class="run-meta" id="agent-meta"></span>
+            <span class="topbar-spacer"></span>
+            <button class="btn sm ghost" id="btn-chat-params" data-i18n="chat.paramsBtn">⚙ 参数</button>
+          </div>
+          <p class="hint sm chat-tip" id="chat-tip" hidden></p>
 
-          <fieldset>
-            <legend data-i18n="chat.genParams">生成参数</legend>
-            <div class="grid-2">
+          <div class="chat-body">
+            <div class="chat-center">
+              <!-- 对话记录：用户消息气泡 + 运行日志 -->
+              <div class="chat-transcript card">
+                <div class="chat-user" id="chat-user" hidden></div>
+                <div class="chat-empty" id="chat-empty">
+                  <span class="chat-empty-ico">💬</span>
+                  <span data-i18n="chat.emptyHint">在下方输入任务，按回车开始对话</span>
+                </div>
+                <pre class="terminal tall" id="agent-log" hidden></pre>
+              </div>
+              <!-- 底部输入框（LM Studio 样式：圆角输入 + 圆形发送钮） -->
+              <div class="chat-inputbar">
+                <textarea id="a-task" rows="2" data-i18n-ph="chat.taskPh" placeholder="例如：用三句话介绍杭州&#10;或：帮我把 /etc/hosts 读一下（Agent 会调用文件工具）"></textarea>
+                <div class="input-actions">
+                  <button class="btn danger sm" id="btn-agent-stop" hidden data-stop-label="chat.stop" data-i18n="chat.stop">⏹ 停止</button>
+                  <button class="send-btn" id="btn-agent-run" data-i18n-title="chat.send" title="发送">➤</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 右侧参数面板（LM Studio 右侧设置栏） -->
+            <aside class="chat-params card" id="chat-params">
+              <h4 data-i18n="chat.genParams">生成参数</h4>
               <label><span data-i18n="chat.tokens">单步生成上限</span>
                 <input id="a-tokens" type="number" min="64" max="8192" step="64" value="512" />
               </label>
               <label><span data-i18n="chat.steps">Agent 最大步数</span>
                 <input id="a-steps" type="number" min="1" max="50" value="6" />
               </label>
+              <details class="advanced">
+                <summary data-i18n="chat.advanced">高级设置（手动路径 / Ollama）</summary>
+                <label><span data-i18n="chat.manualModel">模型路径（手动）</span>
+                  <input id="a-model-path" type="text" data-i18n-ph="agent.modelPathPh" placeholder="./models/Qwen2.5-1.5B-Instruct" />
+                </label>
+                <label><span data-i18n="chat.manualAdapter">适配器路径（手动）</span>
+                  <input id="a-adapter" type="text" placeholder="./lora_output" />
+                </label>
+                <label><span data-i18n="chat.ollamaUrl">Ollama 服务地址</span>
+                  <input id="a-ollama-url" type="text" value="http://localhost:11434/v1" />
+                </label>
+                <label><span data-i18n="chat.ollamaModel">Ollama 模型名</span>
+                  <input id="a-ollama-model" type="text" value="qwen2.5:7b-instruct" />
+                </label>
+              </details>
+              <p class="hint sm" data-i18n="chat.tipAdapter">💡 适配器是微调产生的「补丁」，只有训练过的模型才需要。</p>
+              <p class="hint sm" data-i18n="chat.intro">两种用法，都在这里：① 训练好的模型——选模型 + 选适配器；② 刚导入、没训练过的模型——只选模型，适配器选「不使用」。</p>
+            </aside>
+          </div>
+        </section>
+
+        <!-- ============ 训练 ============ -->
+        <section class="page" id="page-train">
+          <div class="page-head">
+            <h2 data-i18n="tab.train">🚀 训练</h2>
+            <p class="hint" data-i18n="train.nextTip">训练完成后，产出会出现在「产出管理」；想看看模型变得多聪明？去「💬 模型对话」挂上适配器问它几个问题。</p>
+            <button class="btn sm" id="btn-goto-chat" data-i18n="train.gotoChat">去对话 →</button>
+          </div>
+          <div class="train-layout">
+            <div class="card form-card">
+              <h3 data-i18n="train.config">训练配置</h3>
+              <form id="train-form" onsubmit="return false;">
+                <fieldset>
+                  <legend data-i18n="train.model">模型</legend>
+                  <label><span data-i18n="train.source">来源</span>
+                    <select id="f-source">
+                      <option value="modelscope" data-i18n="src.modelscope">魔搭 ModelScope（国内推荐）</option>
+                      <option value="huggingface" data-i18n="src.huggingface">Hugging Face（Llama 需门控授权）</option>
+                      <option value="local" data-i18n="src.local">本地路径（已导入的模型）</option>
+                    </select>
+                  </label>
+                  <label><span data-i18n="train.base">基座模型</span>
+                    <div class="row">
+                      <select id="f-model-preset"></select>
+                      <span class="or" data-i18n="train.or">或</span>
+                      <input id="f-model" type="text" data-i18n-ph="train.modelPh" placeholder="自定义短名 / 仓库ID / 本地路径" />
+                    </div>
+                  </label>
+                  <label><span data-i18n="train.cache">模型缓存目录</span>
+                    <input id="f-cache" type="text" placeholder="./models" />
+                  </label>
+                </fieldset>
+
+                <fieldset>
+                  <legend data-i18n="train.dataset">数据集</legend>
+                  <label><span data-i18n="train.dataset">模式</span>
+                    <select id="f-ds-mode">
+                      <option value="all" data-i18n="train.dsAll">合并 datasets 目录全部 jsonl</option>
+                      <option value="single" data-i18n="train.dsSingle">只用下面选中的一个文件</option>
+                    </select>
+                  </label>
+                  <label id="f-ds-file-wrap"><span data-i18n="train.file">文件</span>
+                    <select id="f-ds-file"></select>
+                  </label>
+                </fieldset>
+
+                <fieldset>
+                  <legend data-i18n="train.lora">LoRA 参数</legend>
+                  <div class="grid-3">
+                    <label><span data-i18n="train.rank">秩 r</span>
+                      <input id="f-rank" type="number" min="4" max="128" step="4" value="16" />
+                    </label>
+                    <label><span data-i18n="train.alpha">alpha</span>
+                      <input id="f-alpha" type="number" min="4" max="256" step="4" value="32" />
+                    </label>
+                    <label><span data-i18n="train.dropout">dropout</span>
+                      <input id="f-dropout" type="number" min="0" max="0.5" step="0.01" value="0.05" />
+                    </label>
+                  </div>
+                </fieldset>
+
+                <fieldset>
+                  <legend data-i18n="train.hyper">训练超参</legend>
+                  <div class="grid-3">
+                    <label><span data-i18n="train.bs">batch</span>
+                      <input id="f-bs" type="number" min="1" max="64" value="2" />
+                    </label>
+                    <label><span data-i18n="train.ga">梯度累积</span>
+                      <input id="f-ga" type="number" min="1" max="64" value="8" />
+                    </label>
+                    <label><span data-i18n="train.seq">最大序列长</span>
+                      <input id="f-seq" type="number" min="128" max="8192" step="128" value="1024" />
+                    </label>
+                    <label><span data-i18n="train.lr">学习率</span>
+                      <input id="f-lr" type="text" value="0.0002" />
+                    </label>
+                    <label><span data-i18n="train.ep">轮数 epochs</span>
+                      <input id="f-ep" type="number" min="0.1" max="100" step="0.1" value="3" />
+                    </label>
+                    <label><span data-i18n="train.steps">固定步数(-1)</span>
+                      <input id="f-steps" type="number" min="-1" max="100000" value="-1" />
+                    </label>
+                  </div>
+                </fieldset>
+
+                <fieldset>
+                  <legend data-i18n="train.output">输出与快照</legend>
+                  <div class="grid-3">
+                    <label><span data-i18n="train.outDir">输出目录</span>
+                      <input id="f-out" type="text" value="./lora_output" />
+                    </label>
+                    <label><span data-i18n="train.save">每 N 步保存</span>
+                      <input id="f-save" type="number" min="1" max="10000" value="100" />
+                    </label>
+                    <label><span data-i18n="train.limit">保留快照数</span>
+                      <input id="f-limit" type="number" min="1" max="20" value="3" />
+                    </label>
+                  </div>
+                  <div class="checks">
+                    <label class="check"><input id="f-resume" type="checkbox" /> <span data-i18n="train.resume">断点续训（从最新快照继续）</span></label>
+                    <label class="check"><input id="f-force" type="checkbox" /> <span data-i18n="train.force">硬件不足仍强制启动</span></label>
+                  </div>
+                </fieldset>
+
+                <div class="form-actions">
+                  <button class="btn primary big" id="btn-train-start" data-i18n="train.start">🚀 开始训练</button>
+                  <button class="btn danger big" id="btn-train-stop" hidden data-stop-label="train.stop" data-i18n="train.stop">⏹ 停止训练</button>
+                  <button class="btn" id="btn-train-reset" data-i18n="train.reset">重置为推荐值</button>
+                </div>
+                <p class="hint" id="train-cmd-preview"></p>
+              </form>
             </div>
-          </fieldset>
 
-          <label><span data-i18n="chat.task">任务内容</span>
-            <textarea id="a-task" rows="4" data-i18n-ph="chat.taskPh" placeholder="例如：用三句话介绍杭州&#10;或：帮我把 /etc/hosts 读一下（Agent 会调用文件工具）"></textarea>
-          </label>
+            <div class="card run-card">
+              <div class="run-head">
+                <span class="job-state" id="train-state">空闲</span>
+                <span class="run-meta" id="train-meta"></span>
+              </div>
+              <div id="train-progress" class="progress" hidden><div id="train-progress-bar"></div></div>
+              <h4 data-i18n="train.lossTitle">Loss 曲线</h4>
+              <div id="loss-chart" class="chart-empty">开始训练后显示 loss 变化</div>
+              <h4 data-i18n="train.logTitle">实时日志</h4>
+              <pre class="terminal" id="train-log"></pre>
+            </div>
+          </div>
+        </section>
 
-          <div class="form-actions">
-            <button class="btn primary big" id="btn-agent-run" data-i18n="chat.start">▶ 开始对话</button>
-            <button class="btn danger big" id="btn-agent-stop" hidden data-stop-label="chat.stopping" data-i18n="chat.stopping">⏹ 停止</button>
+        <!-- ============ 模型导入（对标 LM Studio Discover + My Models） ============ -->
+        <section class="page" id="page-import">
+          <div class="page-head">
+            <h2 data-i18n="imp.title">导入外部模型</h2>
+            <p class="hint" data-i18n="imp.intro">把已经下载好的模型加进来，之后训练和对话都能直接选它。支持三种方式，任选其一。</p>
           </div>
 
-          <details class="advanced">
-            <summary data-i18n="chat.advanced">高级设置（手动路径 / Ollama）</summary>
-            <label><span data-i18n="chat.manualModel">模型路径（手动）</span>
-              <input id="a-model-path" type="text" data-i18n-ph="agent.modelPathPh" placeholder="./models/tiny-qwen-test" />
-            </label>
-            <label><span data-i18n="chat.manualAdapter">适配器路径（手动）</span>
-              <input id="a-adapter" type="text" placeholder="./lora_output" />
-            </label>
-            <label><span data-i18n="chat.ollamaUrl">Ollama 服务地址</span>
-              <input id="a-ollama-url" type="text" value="http://localhost:11434/v1" />
-            </label>
-            <label><span data-i18n="chat.ollamaModel">Ollama 模型名</span>
-              <input id="a-ollama-model" type="text" value="qwen2.5:7b-instruct" />
-            </label>
-          </details>
-        </div>
+          <div class="grid-3 imp-ways">
+            <div class="card way-card">
+              <h4><span class="way-ico">📁</span><span data-i18n="imp.wayPath">方式一 · 本机文件夹</span></h4>
+              <p class="hint" data-i18n="imp.wayPathHint">填写模型文件夹的绝对路径（在运行本服务的电脑上），会拷贝到项目的 models/ 目录。适合模型已经在你电脑硬盘里的情况。</p>
+              <label><span data-i18n="imp.pathLabel">模型文件夹绝对路径</span>
+                <input id="imp-path" type="text" placeholder="/path/to/Qwen2.5-1.5B-Instruct" />
+              </label>
+              <label><span data-i18n="imp.nameLabel">目录名（可选）</span>
+                <input id="imp-path-name" type="text" data-i18n-ph="imp.namePh" placeholder="默认用原文件夹名" />
+              </label>
+              <label class="check"><input id="imp-path-overwrite" type="checkbox" /> <span data-i18n="imp.overwrite">覆盖已存在的同名目录</span></label>
+              <button class="btn primary" id="btn-imp-path" data-i18n="imp.btnPath">导入到 models/</button>
+            </div>
 
-        <div class="card run-card">
-          <div class="run-head">
-            <span class="job-state" id="agent-state">空闲</span>
-            <span class="run-meta" id="agent-meta"></span>
+            <div class="card way-card">
+              <h4><span class="way-ico">🤗</span><span data-i18n="imp.wayRepo">方式二 · Hugging Face / ModelScope 仓库</span></h4>
+              <p class="hint" data-i18n="imp.wayRepoHint">填写仓库 ID 直接下载到 models/ 目录。国内推荐魔搭；Llama 等门控模型需先在 HF 官网同意协议并运行 hf auth login。支持内置短名（如 qwen2.5-1.5b）。</p>
+              <label><span data-i18n="imp.repoSource">来源</span>
+                <select id="imp-source">
+                  <option value="modelscope" data-i18n="src.modelscope">魔搭 ModelScope（国内快）</option>
+                  <option value="huggingface" data-i18n="src.huggingface">Hugging Face（海外 / 门控需登录）</option>
+                </select>
+              </label>
+              <label><span data-i18n="imp.repoLabel">仓库 ID</span>
+                <input id="imp-repo" type="text" data-i18n-ph="imp.repoPh" placeholder="Qwen/Qwen2.5-1.5B-Instruct 或 qwen2.5-1.5b（内置短名）" />
+              </label>
+              <label><span data-i18n="imp.nameLabel">目录名（可选）</span>
+                <input id="imp-repo-name" type="text" data-i18n-ph="imp.namePh" placeholder="默认用仓库名" />
+              </label>
+              <label class="check"><input id="imp-repo-overwrite" type="checkbox" /> <span data-i18n="imp.overwrite">覆盖已存在的同名目录</span></label>
+              <button class="btn primary" id="btn-imp-repo" data-i18n="imp.btnRepo">开始下载</button>
+            </div>
+
+            <div class="card way-card">
+              <h4><span class="way-ico">📤</span><span data-i18n="imp.wayUpload">方式三 · 网页上传</span></h4>
+              <p class="hint" data-i18n="imp.wayUploadHint">适合平板 / 手机：直接把模型文件（可多选，或打包成一个 zip）传上来，自动落到 models/ 目录。</p>
+              <label><span data-i18n="imp.nameLabelReq">目录名（必填）</span>
+                <input id="imp-upload-name" type="text" placeholder="例如 my-qwen" />
+              </label>
+              <label><span data-i18n="imp.uploadLabel">选择文件（可多选 / zip）</span>
+                <input id="imp-files" type="file" multiple />
+              </label>
+              <label class="check"><input id="imp-upload-overwrite" type="checkbox" /> <span data-i18n="imp.overwrite">覆盖已存在的同名目录</span></label>
+              <button class="btn primary" id="btn-imp-upload" data-i18n="imp.btnUpload">上传并导入</button>
+            </div>
           </div>
-          <h4 data-i18n="chat.logTitle">运行日志</h4>
-          <pre class="terminal tall" id="agent-log"></pre>
-        </div>
-      </div>
-    </section>
 
-    <!-- ============ 数据集 ============ -->
-    <section class="page" id="page-data">
-      <div class="card">
-        <h3><span data-i18n="data.title">数据集文件</span>（<span id="ds-dir">datasets</span>）</h3>
-        <table class="table" id="ds-table">
-          <thead><tr>
-            <th data-i18n="data.colFile">文件</th>
-            <th data-i18n="data.colCount">条数</th>
-            <th data-i18n="data.colSize">大小</th>
-            <th data-i18n="data.colOps">操作</th>
-          </tr></thead>
-          <tbody><tr><td colspan="4" data-i18n="data.loading">加载中…</td></tr></tbody>
-        </table>
-      </div>
-      <div class="card" id="ds-preview-card" hidden>
-        <h3><span data-i18n="data.previewTitle">预览：</span><span id="ds-preview-name"></span></h3>
-        <div id="ds-preview"></div>
-      </div>
-    </section>
+          <div class="card" id="imp-job-card" hidden>
+            <div class="run-head">
+              <span class="job-state" id="imp-state">空闲</span>
+              <span class="run-meta" id="imp-meta"></span>
+              <button class="btn danger sm" id="btn-imp-stop" hidden data-stop-label="train.stop" data-i18n="train.stop">停止</button>
+            </div>
+            <h4 data-i18n="imp.logTitle">下载日志</h4>
+            <pre class="terminal" id="imp-log"></pre>
+          </div>
 
-    <!-- ============ 产出管理 ============ -->
-    <section class="page" id="page-out">
-      <div class="card">
-        <h3 data-i18n="out.title">训练产出（LoRA 适配器 / 快照）</h3>
-        <p class="hint" data-i18n="out.hint">训练产生的适配器与 checkpoint 会列在这里。点「用作适配器」可快速填入模型对话页。</p>
-        <div id="out-list"><p class="hint" data-i18n="data.loading">加载中…</p></div>
-      </div>
-    </section>
-  </main>
+          <div class="card">
+            <div class="list-head">
+              <div>
+                <h3 data-i18n="imp.listTitle">已导入的模型</h3>
+                <p class="hint" data-i18n="imp.listHint">这些模型位于 models/ 目录，训练和对话都能直接选。</p>
+              </div>
+              <input id="imp-filter" type="search" data-i18n-ph="imp.searchPh" placeholder="搜索已导入的模型…" />
+            </div>
+            <table class="table" id="imp-table">
+              <thead><tr>
+                <th data-i18n="imp.colName">目录</th>
+                <th data-i18n="imp.colArch">架构</th>
+                <th data-i18n="imp.colWeights">权重文件</th>
+                <th data-i18n="imp.colValid">格式校验</th>
+                <th data-i18n="imp.colSize">大小</th>
+                <th data-i18n="imp.colTime">导入时间</th>
+                <th data-i18n="data.colOps">操作</th>
+              </tr></thead>
+              <tbody><tr><td colspan="7" data-i18n="data.loading">加载中…</td></tr></tbody>
+            </table>
+          </div>
+        </section>
 
-  <footer id="footer">
-    <span data-i18n="app.footer">smolagent-lora-lab · 本地微调工作台 — 所有数据仅在本机处理，不上传任何服务器。</span>
-  </footer>
+        <!-- ============ 数据集 ============ -->
+        <section class="page" id="page-data">
+          <div class="page-head">
+            <h2 data-i18n="tab.data">📚 数据集</h2>
+            <p class="hint"><span data-i18n="data.title">数据集文件</span>（<span id="ds-dir">datasets</span>）</p>
+          </div>
+          <div class="card">
+            <table class="table" id="ds-table">
+              <thead><tr>
+                <th data-i18n="data.colFile">文件</th>
+                <th data-i18n="data.colCount">条数</th>
+                <th data-i18n="data.colSize">大小</th>
+                <th data-i18n="data.colOps">操作</th>
+              </tr></thead>
+              <tbody><tr><td colspan="4" data-i18n="data.loading">加载中…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="card" id="ds-preview-card" hidden>
+            <h3><span data-i18n="data.previewTitle">预览：</span><span id="ds-preview-name"></span></h3>
+            <div id="ds-preview"></div>
+          </div>
+        </section>
+
+        <!-- ============ 产出管理 ============ -->
+        <section class="page" id="page-out">
+          <div class="page-head">
+            <h2 data-i18n="tab.out">📦 产出管理</h2>
+            <p class="hint" data-i18n="out.hint">训练产生的适配器与 checkpoint 会列在这里。点「用作适配器」可快速填入模型对话页。</p>
+          </div>
+          <div class="card">
+            <div id="out-list"><p class="hint" data-i18n="data.loading">加载中…</p></div>
+          </div>
+        </section>
+
+        <!-- ============ 环境体检 ============ -->
+        <section class="page" id="page-env">
+          <div class="page-head">
+            <h2 data-i18n="tab.env">🩺 环境体检</h2>
+          </div>
+          <div class="grid-2">
+            <div class="card">
+              <h3 data-i18n="env.title">运行环境</h3>
+              <table class="kv" id="env-table">
+                <tbody><tr><td data-i18n="data.loading">检测中…</td><td></td></tr></tbody>
+              </table>
+            </div>
+            <div class="card">
+              <h3 data-i18n="env.deps">依赖情况</h3>
+              <table class="kv" id="deps-table">
+                <tbody><tr><td data-i18n="data.loading">检测中…</td><td></td></tr></tbody>
+              </table>
+              <div id="env-advice" class="advice"></div>
+            </div>
+          </div>
+          <div class="card">
+            <h3 data-i18n="env.quick">快速自检（无网络 / 无显卡也能用）</h3>
+            <p class="hint" data-i18n="env.tinyHint">
+              生成一个<strong>微型随机权重 Qwen 模型</strong>（约 10MB，真实 tokenizer），
+              用于在本地完整跑通「训练 → 保存适配器 → 对话」全链路，无需下载 GB 级权重。
+              模型文件在 <code>models/</code> 目录，仅用于测试，<strong>不要用于正式对话</strong>。
+            </p>
+            <div class="row">
+              <input id="tiny-out" type="text" value="./models/tiny-qwen-test" />
+              <button class="btn primary" id="btn-tiny" data-i18n="env.btnTiny">生成微型模型</button>
+            </div>
+            <div class="job-bar" id="tiny-bar">
+              <span class="job-state" id="tiny-state">空闲</span>
+              <button class="btn danger sm" id="btn-tiny-stop" hidden data-stop-label="train.stop" data-i18n="train.stop">停止</button>
+            </div>
+            <pre class="terminal sm" id="tiny-log"></pre>
+          </div>
+        </section>
+      </main>
+
+      <footer id="footer">
+        <span data-i18n="app.footer">smolagent-lora-lab · 本地微调工作台 — 所有数据仅在本机处理，不上传任何服务器。</span>
+      </footer>
+    </div>
+  </div>
 
   <div id="toast" hidden></div>
 

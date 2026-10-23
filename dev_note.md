@@ -25,7 +25,8 @@
 | **WebUI 图形界面** | 【自研改造·阶段三】 | `webui/`：Flask 零构建单页应用，把 train_lora.py / agent.py / import_model.py 包装成表单 + 实时 loss 曲线 + SSE 终端日志；只做进程管理与展示，训练/推理逻辑仍归两个脚本 |
 | **外部模型导入** | 【自研改造·阶段四】 | `import_model.py` + `/api/models/import/*`：本机路径拷贝 / HF·魔搭仓库下载 / 网页多文件与 zip 上传(防 Zip Slip)，HF 格式校验(`config.json` + 权重)，models/ 目录三布局遍历 |
 | **断线续跑** | 【自研改造·阶段五】 | 作业子进程脱离服务器进程组(`start_new_session`)；日志文件为唯一事实源；服务器重启 `adopt_orphans()` 按 pid 领养幸存作业并重建 loss 历史 |
-| **中英双语界面** | 【自研改造】 | `static/i18n.js`：198 键词典 + `data-i18n` 静态文本 + `onLangChange` 重渲染动态内容，localStorage 记忆，首访按浏览器语言 |
+| **中英双语界面** | 【自研改造】 | `static/i18n.js`：双语词典 + `data-i18n` 静态文本 + `onLangChange` 重渲染动态内容，localStorage 记忆，首访按浏览器语言 |
+| **LM Studio 风界面** | 【自研改造·阶段六】 | 左侧图标导航(对话首位) + 深色主题；聊天页顶栏模型选择器 / 中间对话记录(用户气泡+日志) / 底部圆角输入框(回车发送) / 右侧参数面板；导入页搜索过滤。**功能零改动**，仅重写 index.html / style.css 并按新 DOM 适配 app.js 渲染 |
 
 ### 关键坑位记录 / Pitfalls hit
 
@@ -47,6 +48,7 @@
 16. **models/ 目录三种布局**：导入产生 `models/<name>/`；train_lora 的 cache_dir 下载产生 `models/<ns>/<Model>/`；HF hub 缓存产生 `models/<hub>/<repo>--<name>/snapshots/<rev>/`。`_iter_model_dirs()` 逐层向下找合法模型目录；删除接口按 `delete_name`(相对 models/ 的路径)操作，两层布局的父目录空了会一并清理。
 17. **ModelScope 仓库探测**：模型网页返回 200 可能是 SPA 兜底，真实存在性要看 `api/v1/models/<repo>/repo/files`(Code=200)；导入失败(404)时要清掉半成品目录，否则 models/ 里留下无效条目。
 18. **pkill 自杀陷阱**：命令行里同时出现 `webui/app.py` 字样和 `pkill -f` 时，pkill 会匹配到自身 shell 把整条命令 SIGTERM。含通配的 kill 必须放独立脚本文件里执行。
+19. **LM Studio 化改造边界**：功能(训练/对话/导入/续跑/停止键/双语)全部不动，只重写 `index.html` + `style.css`，`app.js` 仅改 ① `.tab`→`.nav-item` 选择器 ② JobView 增加 `emptyEl`(空状态占位) ③ 新增参数面板开关/回车发送/导入过滤。所有元素 ID 保持不变，后端 API 零改动。附带修复：聊天页停止按钮待命文案误用 `chat.stopping`(应为 `chat.stop`，"正在停止…"只在点击后由 `setStopping()` 显示)。
 
 ## 2. 冒烟测试记录 / Smoke test record
 
@@ -74,6 +76,8 @@
 | 17 | 模型导入·网页上传 | zip / 多文件 multipart | ✅ 两者均 valid=True；恶意 zip(`../../etc/`)被 bad_zip 拒绝且无残留(修复 FileStorage 迭代 bug，见坑位 14) |
 | 18 | WebUI 前端双语 | playwright 渲染 + 点 🌐 切换 | ✅ 中文/英文全页签渲染无控制台错误；对话页两步选择器、提示文案随语言与选择联动 |
 | 19 | 无适配器对话 | `--adapter ""` 显式传空 | ✅ 不挂载、无误导警告、returncode 0(修复回退默认 ./lora_output，见坑位 13) |
+| 20 | LM Studio 风界面 | playwright 全页签 + 双语 | ✅ 侧边栏导航(对话首位)/顶栏模型选择器/用户气泡(蓝色)/参数面板开关/回车发送并启动/停止键生效(待命"⏹ 停止"→点击"停止中…")/导入搜索过滤；无控制台错误 |
+| 21 | 新 UI 下训练链路 | `/api/train/start`(local + tiny, 2 步) | ✅ state=done，loss 11.778/11.791 两点，适配器落盘(23MB) |
 
 冒烟中修复的 bug：`train_dataset` 类型、`cfg["resume"]` / `cfg["task"]` 缺失、
 local 模式误解析仓库 ID、docstring 参数名不一致。修复后全绿。
@@ -81,6 +85,9 @@ local 模式误解析仓库 ID、docstring 参数名不一致。修复后全绿�
 阶段四~五新增修复：停止键 killpg 误杀服务器(坑位 11)、adapter 空值回退默认(坑位 13)、
 Flask FileStorage 迭代(坑位 14)、`applyStatic` 清空含输入框的 label(坑位 15)、
 导入失败残留半成品目录(坑位 17)。修复后全绿。
+
+阶段六(LM Studio 风界面)新增修复：聊天页停止按钮待命文案错用 `chat.stopping`(坑位 19)、
+词典中 `chat.intro` 含 HTML 标签经 textContent 显示为字面文本。功能回归全绿。
 
 ### 复现冒烟 / Reproduce
 

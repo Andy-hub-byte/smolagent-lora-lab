@@ -42,9 +42,9 @@ function withPreservedValue(sel, rebuild) {
   if (prev && [...sel.options].some((o) => o.value === prev)) sel.value = prev;
 }
 
-/* ---------------- 页签 ---------------- */
+/* ---------------- 页签（LM Studio 侧边栏导航） ---------------- */
 function switchTab(tab) {
-  document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  document.querySelectorAll(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   document.querySelectorAll(".page").forEach((p) =>
     p.classList.toggle("active", p.id === `page-${tab}`));
   if (tab === "out") loadOutputs();
@@ -53,7 +53,7 @@ function switchTab(tab) {
   if (tab === "chat") buildChatSelects();
 }
 
-document.querySelectorAll(".tab").forEach((btn) => {
+document.querySelectorAll(".nav-item").forEach((btn) => {
   btn.addEventListener("click", () => switchTab(btn.dataset.tab));
 });
 
@@ -67,8 +67,8 @@ const JOB_STATE_KEYS = {
 };
 
 class JobView {
-  constructor({ logEl, stateEl, metaEl, startBtn, stopBtn, progressWrap, progressBar, jobCard }) {
-    Object.assign(this, { logEl, stateEl, metaEl, startBtn, stopBtn, progressWrap, progressBar, jobCard });
+  constructor({ logEl, stateEl, metaEl, startBtn, stopBtn, progressWrap, progressBar, jobCard, emptyEl }) {
+    Object.assign(this, { logEl, stateEl, metaEl, startBtn, stopBtn, progressWrap, progressBar, jobCard, emptyEl });
     this.es = null;
     this.poll = null;
     // 停止按钮文案键（语言切换时随 setState 刷新）
@@ -94,6 +94,10 @@ class JobView {
   }
 
   appendLog(line) {
+    if (this.emptyEl) {
+      this.emptyEl.hidden = true;
+      this.logEl.hidden = false;
+    }
     const el = this.logEl;
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
     el.textContent += (el.textContent ? "\n" : "") + line;
@@ -102,7 +106,13 @@ class JobView {
     if (atBottom) el.scrollTop = el.scrollHeight;
   }
 
-  clearLog() { this.logEl.textContent = ""; }
+  clearLog() {
+    this.logEl.textContent = "";
+    if (this.emptyEl) {
+      this.emptyEl.hidden = false;
+      this.logEl.hidden = true;
+    }
+  }
 
   setState(state) {
     this.state = state;
@@ -275,47 +285,65 @@ function syncSourceWithPreset() {
   else if (src.value === "local") src.value = "modelscope";
 }
 
-/* ---- 已导入模型（模型导入页） ---- */
+/* ---- 已导入模型（模型导入页，支持搜索过滤） ---- */
 async function loadImportedModels() {
   const tbody = $("imp-table").querySelector("tbody");
   try {
     const data = await api("/api/models/imported");
     IMPORTED = data.entries || [];
-    if (!IMPORTED.length) {
-      tbody.innerHTML = `<tr><td colspan="7" class="hint">${esc(t("imp.empty"))}</td></tr>`;
-      return;
-    }
-    tbody.innerHTML = IMPORTED.map((e) => `
-      <tr>
-        <td><code>${esc(e.name)}</code></td>
-        <td>${esc(e.arch) || "—"}</td>
-        <td>${e.weight_count} ${esc(getLang() === "zh" ? "个" : "files")}${e.has_tokenizer ? "" : " " + esc(t("imp.noTok"))}</td>
-        <td class="${e.valid ? "ok" : "miss"}">${e.valid ? esc(t("imp.valid")) : esc(t("imp.invalid"))}</td>
-        <td class="num">${e.size_mb}</td>
-        <td class="num">${esc(e.mtime)}</td>
-        <td class="ops"></td>
-      </tr>`).join("");
-    // 操作列按钮（事件绑定，避免内联 onclick）
-    [...tbody.querySelectorAll("tr")].forEach((tr, i) => {
-      const e = IMPORTED[i];
-      const td = tr.querySelector("td.ops");
-      if (e.valid) {
-        const b1 = document.createElement("button");
-        b1.className = "btn sm";
-        b1.textContent = t("imp.useBase");
-        b1.addEventListener("click", () => useAsBase(e));
-        td.appendChild(b1);
-      }
-      const b2 = document.createElement("button");
-      b2.className = "btn danger sm";
-      b2.textContent = getLang() === "zh" ? "删除" : "Delete";
-      b2.addEventListener("click", () => deleteImported(e));
-      td.appendChild(b2);
-    });
   } catch (e) {
     tbody.innerHTML = `<tr><td colspan="7" class="hint">${esc(t("imp.loadFail"))}${esc(e.message)}</td></tr>`;
+    return;
   }
+  renderImportedRows();
 }
+
+function renderImportedRows() {
+  const tbody = $("imp-table").querySelector("tbody");
+  if (!IMPORTED.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="hint">${esc(t("imp.empty"))}</td></tr>`;
+    return;
+  }
+  const q = ($("imp-filter").value || "").trim().toLowerCase();
+  const rows = q ? IMPORTED.filter((e) => e.name.toLowerCase().includes(q)) : IMPORTED;
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="hint">${esc(t("imp.noMatch"))}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map((e) => {
+    const zh = getLang() === "zh";
+    const filesTxt = zh ? "个" : (e.weight_count === 1 ? "file" : "files");
+    return `
+    <tr>
+      <td><code>${esc(e.name)}</code></td>
+      <td>${esc(e.arch) || "—"}</td>
+      <td>${e.weight_count} ${esc(filesTxt)}${e.has_tokenizer ? "" : " " + esc(t("imp.noTok"))}</td>
+      <td class="${e.valid ? "ok" : "miss"}">${e.valid ? esc(t("imp.valid")) : esc(t("imp.invalid"))}</td>
+      <td class="num">${e.size_mb}</td>
+      <td class="num">${esc(e.mtime)}</td>
+      <td class="ops"></td>
+    </tr>`;
+  }).join("");
+  // 操作列按钮（事件绑定，避免内联 onclick）
+  [...tbody.querySelectorAll("tr")].forEach((tr, i) => {
+    const e = rows[i];
+    const td = tr.querySelector("td.ops");
+    if (e.valid) {
+      const b1 = document.createElement("button");
+      b1.className = "btn sm";
+      b1.textContent = t("imp.useBase");
+      b1.addEventListener("click", () => useAsBase(e));
+      td.appendChild(b1);
+    }
+    const b2 = document.createElement("button");
+    b2.className = "btn danger sm";
+    b2.textContent = getLang() === "zh" ? "删除" : "Delete";
+    b2.addEventListener("click", () => deleteImported(e));
+    td.appendChild(b2);
+  });
+}
+
+$("imp-filter").addEventListener("input", renderImportedRows);
 
 function useAsBase(e) {
   $("f-source").value = "local";
@@ -702,19 +730,19 @@ function drawLoss(points, totalSteps) {
   <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="loss">
     <defs>
       <linearGradient id="lg" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="rgba(79,143,247,0.35)"/>
-        <stop offset="100%" stop-color="rgba(79,143,247,0)"/>
+        <stop offset="0%" stop-color="rgba(91,141,239,0.35)"/>
+        <stop offset="100%" stop-color="rgba(91,141,239,0)"/>
       </linearGradient>
     </defs>
-    <line x1="${pad.l}" y1="${Y(y1)}" x2="${W - pad.r}" y2="${Y(y1)}" stroke="#22304f" stroke-width="1"/>
-    <line x1="${pad.l}" y1="${Y(y0)}" x2="${W - pad.r}" y2="${Y(y0)}" stroke="#22304f" stroke-width="1"/>
+    <line x1="${pad.l}" y1="${Y(y1)}" x2="${W - pad.r}" y2="${Y(y1)}" stroke="#2a2a34" stroke-width="1"/>
+    <line x1="${pad.l}" y1="${Y(y0)}" x2="${W - pad.r}" y2="${Y(y0)}" stroke="#2a2a34" stroke-width="1"/>
     <path d="${area}" fill="url(#lg)"/>
-    <path d="${path}" fill="none" stroke="#4f8ff7" stroke-width="2" stroke-linejoin="round"/>
-    <circle cx="${X(last.step).toFixed(1)}" cy="${Y(last.loss).toFixed(1)}" r="3.5" fill="#4f8ff7"/>
-    <text x="${pad.l - 6}" y="${Y(y1) + 4}" fill="#5d6f92" font-size="10" text-anchor="end">${y1.toFixed(2)}</text>
-    <text x="${pad.l - 6}" y="${Y(y0) + 4}" fill="#5d6f92" font-size="10" text-anchor="end">${y0.toFixed(2)}</text>
-    <text x="${W - pad.r}" y="${H - 6}" fill="#5d6f92" font-size="10" text-anchor="end">step ${last.step}${totalSteps ? `/${totalSteps}` : ""}</text>
-    <text x="${pad.l}" y="${H - 6}" fill="#5d6f92" font-size="10">${esc(t("chart.current"))} ${last.loss.toFixed(4)} · ${esc(t("chart.min"))} ${min.toFixed(4)}</text>
+    <path d="${path}" fill="none" stroke="#5b8def" stroke-width="2" stroke-linejoin="round"/>
+    <circle cx="${X(last.step).toFixed(1)}" cy="${Y(last.loss).toFixed(1)}" r="3.5" fill="#5b8def"/>
+    <text x="${pad.l - 6}" y="${Y(y1) + 4}" fill="#66666f" font-size="10" text-anchor="end">${y1.toFixed(2)}</text>
+    <text x="${pad.l - 6}" y="${Y(y0) + 4}" fill="#66666f" font-size="10" text-anchor="end">${y0.toFixed(2)}</text>
+    <text x="${W - pad.r}" y="${H - 6}" fill="#66666f" font-size="10" text-anchor="end">step ${last.step}${totalSteps ? `/${totalSteps}` : ""}</text>
+    <text x="${pad.l}" y="${H - 6}" fill="#66666f" font-size="10">${esc(t("chart.current"))} ${last.loss.toFixed(4)} · ${esc(t("chart.min"))} ${min.toFixed(4)}</text>
   </svg>`;
 }
 
@@ -737,6 +765,7 @@ $("btn-goto-chat").addEventListener("click", () => {
 const agentView = new JobView({
   logEl: $("agent-log"), stateEl: $("agent-state"), metaEl: $("agent-meta"),
   startBtn: $("btn-agent-run"), stopBtn: $("btn-agent-stop"),
+  emptyEl: $("chat-empty"),
 });
 
 const CHAT_MANUAL = "__manual__";
@@ -851,6 +880,13 @@ function updateChatTip() {
   tip.hidden = !html;
 }
 
+/* ---- 聊天页：参数面板开关（LM Studio 右侧设置栏） ---- */
+$("btn-chat-params").addEventListener("click", () => {
+  $("chat-params").classList.toggle("open");
+});
+// 宽屏默认展开参数面板，与 LM Studio 一致
+if (window.innerWidth > 1180) $("chat-params").classList.add("open");
+
 $("chat-model").addEventListener("change", updateChatTip);
 $("chat-adapter").addEventListener("change", () => {
   updateChatTip();
@@ -860,6 +896,14 @@ $("chat-adapter").addEventListener("change", () => {
     const det = document.querySelector("details.advanced");
     if (det) det.open = true;
     $("a-adapter").focus();
+  }
+});
+
+/* ---- 回车发送（Shift+Enter 换行），与 LM Studio 一致 ---- */
+$("a-task").addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) {
+    ev.preventDefault();
+    if (!$("btn-agent-run").hidden) agentView.onStart();
   }
 });
 
@@ -875,6 +919,11 @@ agentView.onStart = async () => {
     toast(t("chat.needModel"));
     return;
   }
+
+  // 用户消息气泡（LM Studio 聊天风格）
+  const userEl = $("chat-user");
+  userEl.textContent = task;
+  userEl.hidden = false;
 
   const body = {
     task,
